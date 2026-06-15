@@ -30,7 +30,7 @@ dotnet test
 dotnet test --filter "FullyQualifiedName~BookingServiceTests"   # one class
 ```
 
-Domain logic lives in `Services/` precisely so it can be unit-tested without a database; `tests/CalendarBooking.Tests` covers the rules there. The interactive Razor UI is verified by running the app. Note: the in-memory provider ignores the partial unique index and transactions, so the database-level double-booking guard is a Postgres-only guarantee, not covered by unit tests.
+Domain logic lives in `Services/` precisely so it can be unit-tested without a database; `tests/CalendarBooking.Tests` covers the rules there with the EF in-memory provider. The database-level double-booking guard (the partial unique index, which the in-memory provider ignores) is covered separately by **Postgres-backed integration tests** using Testcontainers (`DoubleBookingIntegrationTests`) — these need Docker running. The interactive Razor UI is verified by running the app.
 
 Service map:
 - `AvailabilityService` / `BookingService` / `ApprovalService` / `CancellationService` — the booking loop (define slots, book/request, approve/contention/on-behalf-of, cancel).
