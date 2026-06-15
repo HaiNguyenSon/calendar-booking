@@ -4,10 +4,13 @@
 @using System.Security.Claims
 @using CalendarBooking.Domain
 @using CalendarBooking.Services
+@using Microsoft.AspNetCore.Identity
 @using Microsoft.AspNetCore.WebUtilities
 @inject AvailabilityService Availability
 @inject ApprovalService Approvals
 @inject CancellationService Cancellations
+@inject SubscriptionService Subscriptions
+@inject UserManager<ApplicationUser> UserManager
 @inject GoogleCalendarConnector Calendar
 @inject MicrosoftCalendarConnector MicrosoftCalendar
 @inject NavigationManager Nav
@@ -76,6 +79,48 @@ else
             {
                 <p class="small mb-2">Connect to push your confirmed bookings to Microsoft/Outlook Calendar.</p>
                 <a class="btn btn-primary btn-sm" href="Account/Calendar/ConnectMicrosoft">Connect Microsoft Calendar</a>
+            }
+        </div>
+    </div>
+
+    <div class="card mb-4" style="max-width: 40rem;">
+        <div class="card-body">
+            <h2 class="h6 card-title">Subscriptions</h2>
+            <p class="small mb-2">
+                Your code: <strong>@myPublicId</strong>
+                <span class="text-muted">— share it so others can subscribe to you.</span>
+            </p>
+
+            @if (subscribeMessage is not null)
+            {
+                <div class="alert alert-success py-2">@subscribeMessage</div>
+            }
+            @if (subscribeError is not null)
+            {
+                <div class="alert alert-danger py-2">@subscribeError</div>
+            }
+
+            <div class="d-flex gap-2 mb-3 flex-wrap">
+                <input class="form-control form-control-sm" style="max-width: 16rem;"
+                       placeholder="Enter a user's code" @bind="subscribeCode" />
+                <button class="btn btn-primary btn-sm" @onclick="SubscribeByCodeAsync">Subscribe</button>
+            </div>
+
+            @if (subscriptions.Count == 0)
+            {
+                <p class="text-muted small mb-0">You're not subscribed to anyone yet.</p>
+            }
+            else
+            {
+                <ul class="list-group">
+                    @foreach (var sub in subscriptions)
+                    {
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <a href="@($"u/{Uri.EscapeDataString(sub.Nickname)}")">@sub.Nickname</a>
+                            <button class="btn btn-outline-secondary btn-sm" @onclick="() => UnsubscribeAsync(sub.UserId)">Unsubscribe</button>
+                        </li>
+                    }
+                </ul>
             }
         </div>
     </div>
@@ -286,6 +331,13 @@ else
     private bool msConnected;
     private string? calendarStatus;
 
+    // Subscriptions.
+    private string myPublicId = "";
+    private List<SubscriptionView> subscriptions = new();
+    private string? subscribeCode;
+    private string? subscribeMessage;
+    private string? subscribeError;
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         // Runs only once the circuit is live, so JS interop is available here.
@@ -320,6 +372,7 @@ else
         calendarConnected = calendarConfigured && await Calendar.IsConnectedAsync(userId);
         msConfigured = MicrosoftCalendar.IsConfigured;
         msConnected = msConfigured && await MicrosoftCalendar.IsConnectedAsync(userId);
+        myPublicId = (await UserManager.FindByIdAsync(userId))?.PublicId ?? "";
         var query = QueryHelpers.ParseQuery(Nav.ToAbsoluteUri(Nav.Uri).Query);
         if (query.TryGetValue("calendar", out var calendarResult))
         {
@@ -342,6 +395,35 @@ else
         slots = (await Availability.GetUpcomingOwnedSlotsAsync(userId, DateTime.UtcNow)).ToList();
         requests = (await Approvals.GetIncomingRequestsAsync(userId, DateTime.UtcNow)).ToList();
         bookings = (await Cancellations.GetUpcomingBookingsForUserAsync(userId, DateTime.UtcNow)).ToList();
+        subscriptions = (await Subscriptions.GetSubscriptionsAsync(userId)).ToList();
+    }
+
+    private async Task SubscribeByCodeAsync()
+    {
+        subscribeMessage = subscribeError = null;
+        if (string.IsNullOrWhiteSpace(subscribeCode))
+        {
+            subscribeError = "Enter a code.";
+            return;
+        }
+
+        var result = await Subscriptions.SubscribeAsync(userId, subscribeCode, DateTime.UtcNow);
+        if (!result.Ok)
+        {
+            subscribeError = result.Error;
+            return;
+        }
+
+        subscribeCode = null;
+        subscribeMessage = "Subscribed.";
+        await LoadAsync();
+    }
+
+    private async Task UnsubscribeAsync(string targetId)
+    {
+        subscribeMessage = subscribeError = null;
+        await Subscriptions.UnsubscribeAsync(userId, targetId);
+        await LoadAsync();
     }
 
     private string GetReason(Guid bookingId) => cancelReasons.TryGetValue(bookingId, out var r) ? r : "";

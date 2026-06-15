@@ -4,6 +4,7 @@
 @using CalendarBooking.Domain
 @using CalendarBooking.Services
 @inject BookingService Booking
+@inject SubscriptionService Subscriptions
 @inject IJSRuntime JS
 @inject NavigationManager Nav
 
@@ -23,6 +24,17 @@ else
     @if (owner?.Description is { Length: > 0 } bio)
     {
         <p class="text-muted">@bio</p>
+    }
+
+    @if (owner is not null && owner.Id != userId)
+    {
+        <div class="d-flex align-items-center gap-2 mb-3">
+            <button class="btn btn-sm @(isSubscribed ? "btn-outline-secondary" : "btn-primary")"
+                    @onclick="ToggleSubscribeAsync">
+                @(isSubscribed ? "Unsubscribe" : "Subscribe")
+            </button>
+            <span class="text-muted small">@subscriberCount subscriber@(subscriberCount == 1 ? "" : "s")</span>
+        </div>
     }
 
     @if (message is not null)
@@ -73,6 +85,8 @@ else
     private bool loaded;
     private string userId = "";
     private ApplicationUser? owner;
+    private bool isSubscribed;
+    private int subscriberCount;
     private List<AvailabilitySlot> slots = new();
     private TimeZoneInfo tz = TimeZoneInfo.Utc;
     private string tzLabel = "UTC";
@@ -113,6 +127,39 @@ else
         var (foundOwner, openSlots) = await Booking.GetOpenSlotsByNicknameAsync(Nickname, DateTime.UtcNow);
         owner = foundOwner;
         slots = openSlots.ToList();
+
+        if (owner is not null)
+        {
+            subscriberCount = await Subscriptions.GetSubscriberCountAsync(owner.Id);
+            isSubscribed = userId.Length > 0 && await Subscriptions.IsSubscribedAsync(userId, owner.Id);
+        }
+    }
+
+    private async Task ToggleSubscribeAsync()
+    {
+        message = error = null;
+        if (owner is null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrEmpty(userId))
+        {
+            var returnUrl = $"u/{Uri.EscapeDataString(Nickname)}";
+            Nav.NavigateTo($"Account/Login?returnUrl={Uri.EscapeDataString(returnUrl)}", forceLoad: true);
+            return;
+        }
+
+        if (isSubscribed)
+        {
+            await Subscriptions.UnsubscribeAsync(userId, owner.Id);
+        }
+        else
+        {
+            await Subscriptions.SubscribeAsync(userId, owner.PublicId, DateTime.UtcNow);
+        }
+
+        await ReloadAsync();
     }
 
     private async Task BookAsync(AvailabilitySlot slot)
