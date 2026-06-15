@@ -17,8 +17,15 @@ public interface IExternalCalendarClient
     /// <summary>Provider name, e.g. "Google".</summary>
     string Provider { get; }
 
-    /// <summary>Push a confirmed booking out to the user's external calendar.</summary>
-    Task PushBookingAsync(string userId, Booking booking, CancellationToken ct = default);
+    /// <summary>
+    /// Push a confirmed booking out to the user's external calendar. Returns the created
+    /// event's id (so it can be deleted later), or null if nothing was created (e.g. the
+    /// user hasn't connected this provider).
+    /// </summary>
+    Task<string?> PushBookingAsync(string userId, Booking booking, CancellationToken ct = default);
+
+    /// <summary>Delete a previously-pushed event from the user's external calendar.</summary>
+    Task DeleteEventAsync(string userId, string eventId, CancellationToken ct = default);
 
     /// <summary>Read the user's busy intervals in a window, to block their availability.</summary>
     Task<IReadOnlyList<BusyInterval>> GetBusyIntervalsAsync(

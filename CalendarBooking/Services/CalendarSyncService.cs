@@ -17,19 +17,48 @@ public class CalendarSyncService(
     /// <summary>True when at least one external provider is connected.</summary>
     public bool HasProviders => clients.Count > 0;
 
-    /// <summary>Push a confirmed booking to every connected provider (best-effort).</summary>
-    public async Task PushBookingAsync(string userId, Booking booking, CancellationToken ct = default)
+    /// <summary>
+    /// Push a confirmed booking to every connected provider (best-effort). Returns the
+    /// (provider, eventId) pairs actually created, so the caller can record them for later
+    /// deletion.
+    /// </summary>
+    public async Task<IReadOnlyList<PushedEvent>> PushBookingAsync(string userId, Booking booking, CancellationToken ct = default)
     {
+        var created = new List<PushedEvent>();
         foreach (var client in clients)
         {
             try
             {
-                await client.PushBookingAsync(userId, booking, ct);
+                var eventId = await client.PushBookingAsync(userId, booking, ct);
+                if (!string.IsNullOrEmpty(eventId))
+                {
+                    created.Add(new PushedEvent(client.Provider, eventId));
+                }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 logger.LogError(ex, "Pushing booking to {Provider} failed.", client.Provider);
             }
+        }
+        return created;
+    }
+
+    /// <summary>Delete a previously-pushed event from the named provider (best-effort).</summary>
+    public async Task DeleteEventAsync(string provider, string userId, string eventId, CancellationToken ct = default)
+    {
+        var client = clients.FirstOrDefault(c => c.Provider == provider);
+        if (client is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await client.DeleteEventAsync(userId, eventId, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Deleting event from {Provider} failed.", provider);
         }
     }
 
@@ -52,3 +81,6 @@ public class CalendarSyncService(
         return all;
     }
 }
+
+/// <summary>An event created on a provider, identified for later deletion.</summary>
+public record PushedEvent(string Provider, string EventId);

@@ -30,7 +30,8 @@ internal static class TestDb
     private sealed class StubBusyClient(IReadOnlyList<BusyInterval> busy) : IExternalCalendarClient
     {
         public string Provider => "Stub";
-        public Task PushBookingAsync(string userId, Booking booking, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<string?> PushBookingAsync(string userId, Booking booking, CancellationToken ct = default) => Task.FromResult<string?>(null);
+        public Task DeleteEventAsync(string userId, string eventId, CancellationToken ct = default) => Task.CompletedTask;
         public Task<IReadOnlyList<BusyInterval>> GetBusyIntervalsAsync(
             string userId, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default) => Task.FromResult(busy);
     }

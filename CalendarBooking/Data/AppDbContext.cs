@@ -20,6 +20,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<Booking> Bookings => Set<Booking>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<ExternalCalendarConnection> ExternalCalendarConnections => Set<ExternalCalendarConnection>();
+    public DbSet<ExternalCalendarEvent> ExternalCalendarEvents => Set<ExternalCalendarEvent>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -130,6 +131,12 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
 
             // One connection per (user, provider).
             connection.HasIndex(c => new { c.UserId, c.Provider }).IsUnique();
+        });
+
+        builder.Entity<ExternalCalendarEvent>(calendarEvent =>
+        {
+            // Looked up by booking (to delete on cancellation).
+            calendarEvent.HasIndex(e => e.BookingId);
         });
     }
 }

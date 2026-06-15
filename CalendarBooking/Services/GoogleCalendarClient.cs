@@ -57,18 +57,18 @@ public class GoogleCalendarClient(
         });
     }
 
-    public async Task PushBookingAsync(string userId, Booking booking, CancellationToken ct = default)
+    public async Task<string?> PushBookingAsync(string userId, Booking booking, CancellationToken ct = default)
     {
         var service = await CreateServiceAsync(userId, ct);
         if (service is null)
         {
-            return;
+            return null;
         }
 
         var slot = await db.AvailabilitySlots.FirstOrDefaultAsync(s => s.Id == booking.SlotId, ct);
         if (slot is null)
         {
-            return;
+            return null;
         }
 
         var calendarEvent = new Event
@@ -78,7 +78,19 @@ public class GoogleCalendarClient(
             End = new EventDateTime { DateTimeDateTimeOffset = ToUtcOffset(slot.EndUtc) },
         };
 
-        await service.Events.Insert(calendarEvent, "primary").ExecuteAsync(ct);
+        var created = await service.Events.Insert(calendarEvent, "primary").ExecuteAsync(ct);
+        return created.Id;
+    }
+
+    public async Task DeleteEventAsync(string userId, string eventId, CancellationToken ct = default)
+    {
+        var service = await CreateServiceAsync(userId, ct);
+        if (service is null)
+        {
+            return;
+        }
+
+        await service.Events.Delete("primary", eventId).ExecuteAsync(ct);
     }
 
     public async Task<IReadOnlyList<BusyInterval>> GetBusyIntervalsAsync(
