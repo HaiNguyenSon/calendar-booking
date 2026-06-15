@@ -85,7 +85,7 @@ public class SubscriptionService(AppDbContext db)
             join u in db.Users on s.TargetId equals u.Id
             where s.SubscriberId == subscriberId
             orderby s.CreatedUtc descending
-            select new SubscriptionView(u.Id, u.Nickname, u.PublicId))
+            select new SubscriptionView(u.Id, u.Nickname, u.PublicId, u.FirstName, u.LastName))
             .ToListAsync(ct);
     }
 
@@ -135,4 +135,15 @@ public class SubscriptionService(AppDbContext db)
 public record NewSubscriber(string Nickname, DateTime SubscribedUtc);
 
 /// <summary>A user this subscriber follows.</summary>
-public record SubscriptionView(string UserId, string Nickname, string PublicId);
+public record SubscriptionView(string UserId, string Nickname, string PublicId, string? FirstName, string? LastName)
+{
+    /// <summary>"First Last" if a name is set, otherwise the nickname.</summary>
+    public string FullNameOrNickname
+    {
+        get
+        {
+            var name = $"{FirstName} {LastName}".Trim();
+            return string.IsNullOrEmpty(name) ? Nickname : name;
+        }
+    }
+}

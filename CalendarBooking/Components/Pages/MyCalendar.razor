@@ -322,6 +322,7 @@ else
                     {
                         <div class="btn-group btn-group-sm" role="group">
                             <button class="btn @(selectedTargetId == sub.UserId ? "btn-primary" : "btn-outline-primary")"
+                                    title="@sub.FullNameOrNickname"
                                     @onclick="() => SelectSubscribedAsync(sub)">
                                 @sub.Nickname
                             </button>
