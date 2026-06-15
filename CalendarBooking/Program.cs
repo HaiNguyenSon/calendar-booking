@@ -85,6 +85,7 @@ builder.Services.AddSingleton<IEmailSender<ApplicationUser>, IdentityNoOpEmailSe
 
 // Domain services.
 builder.Services.Configure<CalendarBooking.Services.BookingOptions>(builder.Configuration.GetSection("Booking"));
+builder.Services.AddScoped<CalendarBooking.Services.NotificationService>();
 builder.Services.AddScoped<CalendarBooking.Services.AvailabilityService>();
 builder.Services.AddScoped<CalendarBooking.Services.BookingService>();
 builder.Services.AddScoped<CalendarBooking.Services.ApprovalService>();

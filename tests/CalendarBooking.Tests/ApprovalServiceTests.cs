@@ -33,7 +33,7 @@ public class ApprovalServiceTests
         var slot = TestDb.AddSlot(db, alice.Id, Now.AddHours(1), Now.AddHours(2), SlotType.ApprovalRequired);
         var bobReq = AddPendingRequest(db, slot.Id, bob.Id);
         var carolReq = AddPendingRequest(db, slot.Id, carol.Id);
-        var svc = new ApprovalService(db);
+        var svc = new ApprovalService(db, new NotificationService(db));
 
         var result = await svc.ApproveAsync(bobReq.Id, alice.Id, Now);
 
@@ -56,7 +56,7 @@ public class ApprovalServiceTests
         var mallory = TestDb.AddUser(db, "mallory");
         var slot = TestDb.AddSlot(db, alice.Id, Now.AddHours(1), Now.AddHours(2), SlotType.ApprovalRequired);
         var req = AddPendingRequest(db, slot.Id, bob.Id);
-        var svc = new ApprovalService(db);
+        var svc = new ApprovalService(db, new NotificationService(db));
 
         var result = await svc.ApproveAsync(req.Id, mallory.Id, Now);
 
@@ -72,7 +72,7 @@ public class ApprovalServiceTests
         var bob = TestDb.AddUser(db, "bob");
         var slot = TestDb.AddSlot(db, alice.Id, Now.AddHours(1), Now.AddHours(2), SlotType.ApprovalRequired);
         var req = AddPendingRequest(db, slot.Id, bob.Id);
-        var svc = new ApprovalService(db);
+        var svc = new ApprovalService(db, new NotificationService(db));
 
         var result = await svc.DeclineAsync(req.Id, alice.Id);
 
@@ -89,7 +89,7 @@ public class ApprovalServiceTests
         var bob = TestDb.AddUser(db, "bob");
         var slot = TestDb.AddSlot(db, alice.Id, Now.AddHours(1), Now.AddHours(2), SlotType.ApprovalRequired);
         AddPendingRequest(db, slot.Id, bob.Id);
-        var svc = new ApprovalService(db);
+        var svc = new ApprovalService(db, new NotificationService(db));
 
         var incoming = await svc.GetIncomingRequestsAsync(alice.Id, Now);
 
@@ -104,7 +104,7 @@ public class ApprovalServiceTests
         var alice = TestDb.AddUser(db, "alice");
         var stranger = TestDb.AddUser(db, "stranger");
         var slot = TestDb.AddSlot(db, alice.Id, Now.AddHours(1), Now.AddHours(2));
-        var svc = new ApprovalService(db);
+        var svc = new ApprovalService(db, new NotificationService(db));
 
         var result = await svc.BookOnBehalfAsync(alice.Id, slot.Id, "stranger", Now);
 
@@ -131,7 +131,7 @@ public class ApprovalServiceTests
         });
         db.SaveChanges();
         var slot = TestDb.AddSlot(db, alice.Id, Now.AddHours(1), Now.AddHours(2));
-        var svc = new ApprovalService(db);
+        var svc = new ApprovalService(db, new NotificationService(db));
 
         var result = await svc.BookOnBehalfAsync(alice.Id, slot.Id, "client", Now);
 
@@ -148,7 +148,7 @@ public class ApprovalServiceTests
         using var db = TestDb.NewContext();
         var alice = TestDb.AddUser(db, "alice");
         var slot = TestDb.AddSlot(db, alice.Id, Now.AddHours(1), Now.AddHours(2));
-        var svc = new ApprovalService(db);
+        var svc = new ApprovalService(db, new NotificationService(db));
 
         var result = await svc.BookOnBehalfAsync(alice.Id, slot.Id, "alice", Now);
 

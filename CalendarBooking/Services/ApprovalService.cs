@@ -9,7 +9,7 @@ namespace CalendarBooking.Services;
 /// approving (which confirms a booking and auto-declines the competition), declining,
 /// and booking a slot on behalf of an existing client.
 /// </summary>
-public class ApprovalService(AppDbContext db)
+public class ApprovalService(AppDbContext db, NotificationService notifications)
 {
     public readonly record struct Result(bool Ok, string? Error, Booking? Booking = null)
     {
@@ -76,7 +76,11 @@ public class ApprovalService(AppDbContext db)
         foreach (var other in others)
         {
             other.Status = RequestStatus.Superseded;
+            notifications.Queue(other.RequesterId,
+                "A slot you requested was taken by someone else — feel free to book another.", nowUtc);
         }
+
+        notifications.Queue(request.RequesterId, "Your booking request was approved.", nowUtc);
 
         try
         {
@@ -106,6 +110,7 @@ public class ApprovalService(AppDbContext db)
         }
 
         request.Status = RequestStatus.Declined;
+        notifications.Queue(request.RequesterId, "Your booking request was declined.", DateTime.UtcNow);
         await db.SaveChangesAsync(ct);
         return Result.Success();
     }
@@ -163,6 +168,9 @@ public class ApprovalService(AppDbContext db)
         };
         slot.IsBooked = true;
         db.Bookings.Add(booking);
+
+        var ownerNickname = await db.Users.Where(u => u.Id == ownerId).Select(u => u.Nickname).FirstOrDefaultAsync(ct) ?? "Someone";
+        notifications.Queue(client.Id, $"{ownerNickname} booked you into one of their slots.", nowUtc);
 
         try
         {

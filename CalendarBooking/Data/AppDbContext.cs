@@ -18,6 +18,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<AvailabilitySlot> AvailabilitySlots => Set<AvailabilitySlot>();
     public DbSet<BookingRequest> BookingRequests => Set<BookingRequest>();
     public DbSet<Booking> Bookings => Set<Booking>();
+    public DbSet<Notification> Notifications => Set<Notification>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -106,6 +107,19 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
             booking.HasIndex(b => b.OwnerId);
 
             booking.Property(b => b.CancellationReason).HasMaxLength(250);
+        });
+
+        builder.Entity<Notification>(notification =>
+        {
+            notification.HasOne(n => n.User)
+                .WithMany()
+                .HasForeignKey(n => n.UserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // "My notifications, newest first" and the unread-badge query.
+            notification.HasIndex(n => new { n.UserId, n.CreatedUtc });
+
+            notification.Property(n => n.Message).HasMaxLength(500);
         });
     }
 }

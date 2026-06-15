@@ -35,7 +35,7 @@ public class CancellationServiceTests
         var bob = TestDb.AddUser(db, "bob");
         var slot = TestDb.AddSlot(db, alice.Id, Now.AddHours(1), Now.AddHours(2));
         var booking = AddConfirmedBooking(db, slot, alice.Id, bob.Id);
-        var svc = new CancellationService(db);
+        var svc = new CancellationService(db, new NotificationService(db));
 
         var result = await svc.CancelAsync(booking.Id, bob.Id, "Something came up", Now);
 
@@ -56,7 +56,7 @@ public class CancellationServiceTests
         var bob = TestDb.AddUser(db, "bob");
         var slot = TestDb.AddSlot(db, alice.Id, Now.AddHours(1), Now.AddHours(2));
         var booking = AddConfirmedBooking(db, slot, alice.Id, bob.Id);
-        var svc = new CancellationService(db);
+        var svc = new CancellationService(db, new NotificationService(db));
 
         var result = await svc.CancelAsync(booking.Id, alice.Id, "Owner cancelling", Now);
 
@@ -71,7 +71,7 @@ public class CancellationServiceTests
         var bob = TestDb.AddUser(db, "bob");
         var slot = TestDb.AddSlot(db, alice.Id, Now.AddHours(1), Now.AddHours(2));
         var booking = AddConfirmedBooking(db, slot, alice.Id, bob.Id);
-        var svc = new CancellationService(db);
+        var svc = new CancellationService(db, new NotificationService(db));
 
         var result = await svc.CancelAsync(booking.Id, bob.Id, "   ", Now);
 
@@ -87,7 +87,7 @@ public class CancellationServiceTests
         var bob = TestDb.AddUser(db, "bob");
         var slot = TestDb.AddSlot(db, alice.Id, Now.AddHours(1), Now.AddHours(2));
         var booking = AddConfirmedBooking(db, slot, alice.Id, bob.Id);
-        var svc = new CancellationService(db);
+        var svc = new CancellationService(db, new NotificationService(db));
 
         var result = await svc.CancelAsync(booking.Id, bob.Id, new string('x', CancellationService.MaxReasonLength + 1), Now);
 
@@ -103,7 +103,7 @@ public class CancellationServiceTests
         var mallory = TestDb.AddUser(db, "mallory");
         var slot = TestDb.AddSlot(db, alice.Id, Now.AddHours(1), Now.AddHours(2));
         var booking = AddConfirmedBooking(db, slot, alice.Id, bob.Id);
-        var svc = new CancellationService(db);
+        var svc = new CancellationService(db, new NotificationService(db));
 
         var result = await svc.CancelAsync(booking.Id, mallory.Id, "not mine", Now);
 
@@ -119,7 +119,7 @@ public class CancellationServiceTests
         var bob = TestDb.AddUser(db, "bob");
         var slot = TestDb.AddSlot(db, alice.Id, Now.AddHours(1), Now.AddHours(2));
         var booking = AddConfirmedBooking(db, slot, alice.Id, bob.Id);
-        var svc = new CancellationService(db);
+        var svc = new CancellationService(db, new NotificationService(db));
 
         Assert.True((await svc.CancelAsync(booking.Id, bob.Id, "first", Now)).Ok);
         var second = await svc.CancelAsync(booking.Id, bob.Id, "again", Now);
@@ -140,7 +140,7 @@ public class CancellationServiceTests
         var bobHosts = TestDb.AddSlot(db, bob.Id, Now.AddHours(3), Now.AddHours(4));
         AddConfirmedBooking(db, bobHosts, bob.Id, alice.Id); // bob owner, alice attendee
 
-        var svc = new CancellationService(db);
+        var svc = new CancellationService(db, new NotificationService(db));
 
         var aliceSchedule = await svc.GetUpcomingBookingsForUserAsync(alice.Id, Now);
 

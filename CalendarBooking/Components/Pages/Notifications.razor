@@ -1,0 +1,58 @@
+@page "/notifications"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@using System.Security.Claims
+@using CalendarBooking.Domain
+@using CalendarBooking.Services
+@inject NotificationService NotificationSvc
+
+<PageTitle>Notifications</PageTitle>
+
+<h1>Notifications</h1>
+
+@if (!loaded)
+{
+    <p><em>Loading…</em></p>
+}
+else if (items.Count == 0)
+{
+    <p class="text-muted">Nothing yet.</p>
+}
+else
+{
+    <ul class="list-group" style="max-width: 40rem;">
+        @foreach (var n in items)
+        {
+            <li class="list-group-item @(n.ReadUtc is null ? "fw-semibold" : "")">
+                <div>@n.Message</div>
+                <small class="text-muted">@n.CreatedUtc.ToString("ddd d MMM yyyy, HH:mm 'UTC'")</small>
+            </li>
+        }
+    </ul>
+}
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthState { get; set; } = default!;
+
+    private bool loaded;
+    private List<Notification> items = new();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        var state = await AuthState;
+        var userId = state.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+
+        // Snapshot first (so we can still show which were unread), then mark them read.
+        items = (await NotificationSvc.GetRecentAsync(userId)).ToList();
+        await NotificationSvc.MarkAllReadAsync(userId, DateTime.UtcNow);
+
+        loaded = true;
+        StateHasChanged();
+    }
+}

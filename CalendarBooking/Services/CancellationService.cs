@@ -9,7 +9,7 @@ namespace CalendarBooking.Services;
 /// confirmed booking may cancel it, with a required reason; cancelling frees the slot but
 /// keeps the booking row (marked Cancelled) so relationship history and audit survive.
 /// </summary>
-public class CancellationService(AppDbContext db)
+public class CancellationService(AppDbContext db, NotificationService notifications)
 {
     public const int MaxReasonLength = 250;
 
@@ -87,6 +87,10 @@ public class CancellationService(AppDbContext db)
         {
             slot.IsBooked = false;
         }
+
+        // Tell the other party, with the reason.
+        var otherPartyId = booking.OwnerId == actingUserId ? booking.AttendeeId : booking.OwnerId;
+        notifications.Queue(otherPartyId, $"A booking was cancelled. Reason: {reason}", nowUtc);
 
         await db.SaveChangesAsync(ct);
         return Result.Success();

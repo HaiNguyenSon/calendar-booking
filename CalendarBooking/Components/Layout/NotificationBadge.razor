@@ -1,0 +1,32 @@
+@rendermode InteractiveServer
+@using System.Security.Claims
+@using CalendarBooking.Services
+@inject NotificationService Notifications
+
+@* Interactive island in the nav. Shows the unread count for the signed-in user. The
+   count is refreshed on each render now; Phase 5b pushes live updates over SignalR. *@
+
+<a class="nav-link" href="notifications">
+    <span class="bi bi-bell-fill-nav-menu" aria-hidden="true"></span> Notifications
+    @if (unread > 0)
+    {
+        <span class="badge bg-danger rounded-pill">@unread</span>
+    }
+</a>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthState { get; set; } = default!;
+
+    private int unread;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthState;
+        var userId = state.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!string.IsNullOrEmpty(userId))
+        {
+            unread = await Notifications.GetUnreadCountAsync(userId);
+        }
+    }
+}

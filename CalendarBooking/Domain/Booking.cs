@@ -45,4 +45,10 @@ public class Booking
 
     /// <summary>Required when cancelling; max 250 chars. Delivered to the other party.</summary>
     public string? CancellationReason { get; set; }
+
+    /// <summary>
+    /// Set once a "starting soon" reminder has been sent, so the background reminder job
+    /// sends it at most once. Null until then.
+    /// </summary>
+    public DateTime? ReminderSentUtc { get; set; }
 }

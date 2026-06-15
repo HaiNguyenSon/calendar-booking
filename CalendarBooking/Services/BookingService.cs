@@ -16,7 +16,7 @@ namespace CalendarBooking.Services;
 /// instant slot at the same moment, the second <c>SaveChanges</c> fails and we report the
 /// slot as taken. The in-memory <c>IsBooked</c> check just handles the common case nicely.
 /// </summary>
-public class BookingService(AppDbContext db, IOptions<BookingOptions> options)
+public class BookingService(AppDbContext db, IOptions<BookingOptions> options, NotificationService notifications)
 {
     private readonly int maxPendingRequests = options.Value.MaxPendingRequests;
 
@@ -112,6 +112,9 @@ public class BookingService(AppDbContext db, IOptions<BookingOptions> options)
         slot.IsBooked = true;
         db.Bookings.Add(booking);
 
+        var attendeeNickname = await GetNicknameAsync(attendeeId, ct);
+        notifications.Queue(slot.OwnerId, $"{attendeeNickname} booked one of your slots.", nowUtc);
+
         try
         {
             await db.SaveChangesAsync(ct);
@@ -171,9 +174,16 @@ public class BookingService(AppDbContext db, IOptions<BookingOptions> options)
             CreatedUtc = nowUtc,
         };
         db.BookingRequests.Add(request);
+
+        var requesterNickname = await GetNicknameAsync(requesterId, ct);
+        notifications.Queue(slot.OwnerId, $"{requesterNickname} requested one of your slots.", nowUtc);
+
         await db.SaveChangesAsync(ct);
         return Result.Requested(request);
     }
+
+    private async Task<string> GetNicknameAsync(string userId, CancellationToken ct) =>
+        await db.Users.Where(u => u.Id == userId).Select(u => u.Nickname).FirstOrDefaultAsync(ct) ?? "Someone";
 }
 
 /// <summary>An owner shown in browse results, with how many open slots they have.</summary>
