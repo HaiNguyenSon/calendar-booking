@@ -1,6 +1,9 @@
+using CalendarBooking.Components.Account.Pages;
 using CalendarBooking.Domain;
+using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Primitives;
 using System.Security.Claims;
 
 namespace CalendarBooking.Components.Account;
@@ -26,6 +29,30 @@ internal static class IdentityComponentsEndpointRouteBuilderExtensions
         {
             await signInManager.SignOutAsync();
             return TypedResults.LocalRedirect($"~/{returnUrl}");
+        });
+
+        // Starts an external (e.g. Google) login by issuing a Challenge. The provider
+        // redirects back to the ExternalLogin page (LoginCallback) once the user has
+        // authenticated with them.
+        accountGroup.MapPost("/PerformExternalLogin", (
+            HttpContext context,
+            [FromServices] SignInManager<ApplicationUser> signInManager,
+            [FromForm] string provider,
+            [FromForm] string returnUrl) =>
+        {
+            IEnumerable<KeyValuePair<string, StringValues>> query =
+            [
+                new("ReturnUrl", returnUrl),
+                new("Action", ExternalLogin.LoginCallbackAction)
+            ];
+
+            var redirectUrl = UriHelper.BuildRelative(
+                context.Request.PathBase,
+                "/Account/ExternalLogin",
+                QueryString.Create(query));
+
+            var properties = signInManager.ConfigureExternalAuthenticationProperties(provider, redirectUrl);
+            return TypedResults.Challenge(properties, [provider]);
         });
 
         return accountGroup;

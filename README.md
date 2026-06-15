@@ -30,10 +30,19 @@ needs.
 
 ### Prerequisites
 - [.NET SDK 8.0](https://dotnet.microsoft.com/download) (see [`global.json`](global.json))
+- [Docker](https://www.docker.com/) — runs the local PostgreSQL database
+- EF Core CLI tools (for migrations): `dotnet tool install --global dotnet-ef`
 
 ### Run
 
 ```bash
+# 1. Start the database
+docker compose up -d
+
+# 2. Apply migrations (creates the schema on first run)
+dotnet ef database update --project CalendarBooking
+
+# 3. Run the app
 dotnet run --project CalendarBooking
 ```
 
@@ -41,11 +50,37 @@ Then open the URL printed in the console:
 - HTTPS: <https://localhost:7043>
 - HTTP: <http://localhost:5196>
 
+Register a local account (email + password + a public nickname), or use Google once
+it's configured (see below).
+
 ### Build
 
 ```bash
 dotnet build
 ```
+
+### Enabling Google login (optional)
+
+Google login is off until you supply OAuth credentials, so the app runs fine without
+them. To enable it locally:
+
+1. In the [Google Cloud Console](https://console.cloud.google.com/), create an OAuth
+   2.0 Client ID (type *Web application*) and add this authorized redirect URI:
+   `https://localhost:7043/signin-google`.
+2. Store the credentials with [user-secrets](https://learn.microsoft.com/aspnet/core/security/app-secrets)
+   (kept out of source control):
+
+   ```bash
+   cd CalendarBooking
+   dotnet user-secrets init
+   dotnet user-secrets set "Authentication:Google:ClientId" "<your-client-id>"
+   dotnet user-secrets set "Authentication:Google:ClientSecret" "<your-client-secret>"
+   ```
+
+3. Restart the app — a "Google" button now appears on the login/register pages.
+
+Security note: an external login is auto-linked to an existing local account only when
+the provider reports the email as verified. We never link by email address alone.
 
 ## Project structure
 
