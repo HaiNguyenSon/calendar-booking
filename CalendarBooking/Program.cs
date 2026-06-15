@@ -80,13 +80,23 @@ builder.Services.AddIdentityCore<ApplicationUser>(options =>
     .AddSignInManager()
     .AddDefaultTokenProviders();
 
-// Identity needs an email sender registered; this one is a no-op until Phase 5.
-builder.Services.AddSingleton<IEmailSender<ApplicationUser>, IdentityNoOpEmailSender>();
+// Email: real SMTP when Email:Smtp:Host is configured, otherwise log-only. Identity's email
+// sender (confirmation/reset) and the notification dispatcher both go through IAppEmailSender.
+builder.Services.Configure<CalendarBooking.Services.EmailOptions>(builder.Configuration.GetSection("Email:Smtp"));
+var smtpConfigured = !string.IsNullOrWhiteSpace(builder.Configuration["Email:Smtp:Host"]);
+if (smtpConfigured)
+{
+    builder.Services.AddSingleton<CalendarBooking.Services.IAppEmailSender, CalendarBooking.Services.SmtpAppEmailSender>();
+}
+else
+{
+    builder.Services.AddSingleton<CalendarBooking.Services.IAppEmailSender, CalendarBooking.Services.LoggingAppEmailSender>();
+}
+builder.Services.AddScoped<IEmailSender<ApplicationUser>, IdentityNoOpEmailSender>();
 
 // Domain services.
 builder.Services.Configure<CalendarBooking.Services.BookingOptions>(builder.Configuration.GetSection("Booking"));
 builder.Services.AddSingleton<CalendarBooking.Services.NotificationBroadcaster>();
-builder.Services.AddSingleton<CalendarBooking.Services.IAppEmailSender, CalendarBooking.Services.LoggingAppEmailSender>();
 builder.Services.AddScoped<CalendarBooking.Services.NotificationService>();
 builder.Services.AddHostedService<CalendarBooking.Services.EmailDispatcherService>();
 builder.Services.AddHostedService<CalendarBooking.Services.ReminderService>();
