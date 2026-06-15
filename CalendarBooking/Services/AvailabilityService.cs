@@ -86,34 +86,59 @@ public class AvailabilityService(AppDbContext db)
         string ownerId, DateTime firstStartUtc, DateTime firstEndUtc, int weeks, SlotType slotType,
         DateTime nowUtc, CancellationToken ct = default)
     {
-        if (firstEndUtc <= firstStartUtc)
-        {
-            return Result.Fail("End time must be after the start time.");
-        }
-
-        if (firstStartUtc < nowUtc)
-        {
-            return Result.Fail("A slot cannot start in the past.");
-        }
-
         if (weeks is < 1 or > 52)
         {
             return Result.Fail("Choose between 1 and 52 weeks.");
         }
 
+        // UTC stepping. Callers that care about daylight-saving (the UI) build occurrences
+        // by stepping in local time and call CreateManyAsync directly.
+        var occurrences = Enumerable.Range(0, weeks)
+            .Select(i => (StartUtc: firstStartUtc.AddDays(7 * i), EndUtc: firstEndUtc.AddDays(7 * i)))
+            .ToList();
+
+        return await CreateManyAsync(ownerId, occurrences, slotType, nowUtc, ct);
+    }
+
+    /// <summary>
+    /// Create many slots at once (used for recurrence). Each occurrence is validated; any
+    /// that would overlap an existing slot or an earlier occurrence in the batch is skipped.
+    /// Fails only if none could be created. Times are UTC, so the caller decides how to step
+    /// a recurrence (e.g. in local time, to stay daylight-saving-correct).
+    /// </summary>
+    public async Task<Result> CreateManyAsync(
+        string ownerId, IReadOnlyList<(DateTime StartUtc, DateTime EndUtc)> occurrences, SlotType slotType,
+        DateTime nowUtc, CancellationToken ct = default)
+    {
+        if (occurrences.Count == 0)
+        {
+            return Result.Fail("Nothing to create.");
+        }
+
+        foreach (var o in occurrences)
+        {
+            if (o.EndUtc <= o.StartUtc)
+            {
+                return Result.Fail("End time must be after the start time.");
+            }
+
+            if (o.StartUtc < nowUtc)
+            {
+                return Result.Fail("A slot cannot start in the past.");
+            }
+        }
+
+        var earliest = occurrences.Min(o => o.StartUtc);
         var existing = await db.AvailabilitySlots
-            .Where(s => s.OwnerId == ownerId && s.EndUtc > firstStartUtc)
+            .Where(s => s.OwnerId == ownerId && s.EndUtc > earliest)
             .Select(s => new { s.StartUtc, s.EndUtc })
             .ToListAsync(ct);
 
         var toAdd = new List<AvailabilitySlot>();
-        for (var i = 0; i < weeks; i++)
+        foreach (var o in occurrences)
         {
-            var start = firstStartUtc.AddDays(7 * i);
-            var end = firstEndUtc.AddDays(7 * i);
-
-            var overlapsExisting = existing.Any(e => e.StartUtc < end && start < e.EndUtc);
-            var overlapsBatch = toAdd.Any(s => s.StartUtc < end && start < s.EndUtc);
+            var overlapsExisting = existing.Any(e => e.StartUtc < o.EndUtc && o.StartUtc < e.EndUtc);
+            var overlapsBatch = toAdd.Any(s => s.StartUtc < o.EndUtc && o.StartUtc < s.EndUtc);
             if (overlapsExisting || overlapsBatch)
             {
                 continue;
@@ -123,8 +148,8 @@ public class AvailabilityService(AppDbContext db)
             {
                 Id = Guid.NewGuid(),
                 OwnerId = ownerId,
-                StartUtc = start,
-                EndUtc = end,
+                StartUtc = o.StartUtc,
+                EndUtc = o.EndUtc,
                 SlotType = slotType,
                 IsBooked = false,
                 CreatedUtc = nowUtc,

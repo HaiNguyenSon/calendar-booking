@@ -25,12 +25,10 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
         // Must run first so Identity's own tables are configured.
         base.OnModelCreating(builder);
 
-        builder.Entity<ApplicationUser>(user =>
-        {
-            // Public nickname must be unique. This is a plain unique index for now;
-            // Phase 6 hardens it to case-insensitive (citext / LOWER() index).
-            user.HasIndex(u => u.Nickname).IsUnique();
-        });
+        // Public nickname must be unique CASE-INSENSITIVELY ("Alice" and "alice" collide).
+        // This is enforced by a unique index on LOWER(Nickname), created with raw SQL in the
+        // HardenNicknameUniqueness migration (EF can't model a functional index), so there is
+        // intentionally no HasIndex(...) here.
 
         builder.Entity<AvailabilitySlot>(slot =>
         {

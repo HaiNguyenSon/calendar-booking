@@ -104,6 +104,27 @@ public class AvailabilityServiceTests
     }
 
     [Fact]
+    public async Task CreateMany_creates_each_occurrence_and_skips_overlaps()
+    {
+        using var db = TestDb.NewContext();
+        var alice = TestDb.AddUser(db, "alice");
+        TestDb.AddSlot(db, alice.Id, Now.AddHours(1).AddDays(7), Now.AddHours(2).AddDays(7)); // blocks occurrence 2
+        var svc = new AvailabilityService(db);
+        var occurrences = new List<(DateTime StartUtc, DateTime EndUtc)>
+        {
+            (Now.AddHours(1), Now.AddHours(2)),
+            (Now.AddHours(1).AddDays(7), Now.AddHours(2).AddDays(7)),  // overlaps -> skipped
+            (Now.AddHours(1).AddDays(14), Now.AddHours(2).AddDays(14)),
+        };
+
+        var result = await svc.CreateManyAsync(alice.Id, occurrences, SlotType.Instant, Now);
+
+        Assert.True(result.Ok);
+        // 1 pre-existing + 2 created (occurrence 2 skipped) = 3.
+        Assert.Equal(3, await db.AvailabilitySlots.CountAsync());
+    }
+
+    [Fact]
     public async Task Delete_removes_an_owned_unbooked_slot()
     {
         using var db = TestDb.NewContext();

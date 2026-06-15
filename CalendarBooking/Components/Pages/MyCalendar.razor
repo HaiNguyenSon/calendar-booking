@@ -321,9 +321,27 @@ else
         var startUtc = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(form.Start, DateTimeKind.Unspecified), tz);
         var endUtc = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(form.End, DateTimeKind.Unspecified), tz);
 
-        var result = form.Weeks <= 1
-            ? await Availability.CreateOneOffAsync(userId, startUtc, endUtc, form.SlotType, DateTime.UtcNow)
-            : await Availability.CreateWeeklyAsync(userId, startUtc, endUtc, form.Weeks, form.SlotType, DateTime.UtcNow);
+        AvailabilityService.Result result;
+        if (form.Weeks <= 1)
+        {
+            result = await Availability.CreateOneOffAsync(userId, startUtc, endUtc, form.SlotType, DateTime.UtcNow);
+        }
+        else
+        {
+            // Step the recurrence in LOCAL time and convert each occurrence to UTC, so a
+            // weekly slot keeps the same wall-clock time even across a daylight-saving change.
+            var occurrences = Enumerable.Range(0, form.Weeks)
+                .Select(i =>
+                {
+                    var sLocal = form.Start.AddDays(7 * i);
+                    var eLocal = form.End.AddDays(7 * i);
+                    return (
+                        StartUtc: TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(sLocal, DateTimeKind.Unspecified), tz),
+                        EndUtc: TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(eLocal, DateTimeKind.Unspecified), tz));
+                })
+                .ToList();
+            result = await Availability.CreateManyAsync(userId, occurrences, form.SlotType, DateTime.UtcNow);
+        }
 
         if (!result.Ok)
         {
