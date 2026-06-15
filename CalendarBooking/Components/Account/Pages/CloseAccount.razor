@@ -1,0 +1,80 @@
+@page "/Account/Close"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Identity
+@using CalendarBooking.Services
+@inject AccountCleanupService Cleanup
+@inject SignInManager<ApplicationUser> SignInManager
+@inject UserManager<ApplicationUser> UserManager
+@inject IdentityRedirectManager RedirectManager
+
+@* Static SSR (no @rendermode): closing the account signs the user out, which writes to the
+   response cookie — only possible during static rendering, like login/logout. *@
+
+<PageTitle>Close account</PageTitle>
+
+<h1>Close your account</h1>
+
+<StatusMessage Message="@message" />
+
+<div class="alert alert-warning" role="alert">
+    Closing your account can't be undone. Your future bookings will be cancelled (the other
+    party is notified) and your upcoming open slots removed. Past booking history is kept but
+    anonymized, and you won't be able to sign in again.
+</div>
+
+<EditForm Model="Input" method="post" OnValidSubmit="CloseAsync" FormName="close-account">
+    <div class="mb-3" style="max-width: 28rem;">
+        <label class="form-label" for="confirm">Type your nickname (<strong>@currentNickname</strong>) to confirm</label>
+        <InputText id="confirm" @bind-Value="Input.Confirmation" class="form-control" autocomplete="off" />
+    </div>
+    <button type="submit" class="btn btn-danger">Close my account</button>
+</EditForm>
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm]
+    private InputModel Input { get; set; } = new();
+
+    private string? message;
+    private string currentNickname = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await UserManager.GetUserAsync(HttpContext.User);
+        currentNickname = user?.Nickname ?? "";
+    }
+
+    private async Task CloseAsync()
+    {
+        var user = await UserManager.GetUserAsync(HttpContext.User);
+        if (user is null)
+        {
+            RedirectManager.RedirectTo("Account/Login");
+            return;
+        }
+
+        // Require typing the exact nickname so it can't be triggered accidentally/by CSRF replay.
+        if (!string.Equals(Input.Confirmation?.Trim(), user.Nickname, StringComparison.Ordinal))
+        {
+            message = "Error: Type your nickname exactly to confirm.";
+            return;
+        }
+
+        var result = await Cleanup.CloseAccountAsync(user.Id, DateTime.UtcNow);
+        if (!result.Ok)
+        {
+            message = $"Error: {result.Error}";
+            return;
+        }
+
+        await SignInManager.SignOutAsync();
+        RedirectManager.RedirectToWithStatus("", "Your account has been closed.", HttpContext);
+    }
+
+    private sealed class InputModel
+    {
+        public string? Confirmation { get; set; }
+    }
+}

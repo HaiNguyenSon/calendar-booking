@@ -23,15 +23,26 @@
 
     private string userId = "";
     private int unread;
+    private bool subscribed;
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // Load + subscribe only once interactive. Doing this in OnInitialized would query the
+        // scoped DbContext DURING static prerender, which can collide with the page's own DB
+        // work on the same context ("a second operation was started on this context").
+        if (!firstRender)
+        {
+            return;
+        }
+
         var state = await AuthState;
         userId = state.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
         if (userId.Length > 0)
         {
-            unread = await Notifications.GetUnreadCountAsync(userId);
             Broadcaster.Changed += OnChanged;
+            subscribed = true;
+            unread = await Notifications.GetUnreadCountAsync(userId);
+            StateHasChanged();
         }
     }
 
@@ -50,5 +61,11 @@
         });
     }
 
-    public void Dispose() => Broadcaster.Changed -= OnChanged;
+    public void Dispose()
+    {
+        if (subscribed)
+        {
+            Broadcaster.Changed -= OnChanged;
+        }
+    }
 }
