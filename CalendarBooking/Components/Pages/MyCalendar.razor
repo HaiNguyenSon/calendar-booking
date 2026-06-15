@@ -46,6 +46,20 @@ else
         </div>
     }
 
+    @* Shared view controls — Week/Month + period navigation. Apply to BOTH calendars. *@
+    <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
+        <div class="btn-group btn-group-sm" role="group" aria-label="View">
+            <button class="btn @(view == ViewMode.Week ? "btn-primary" : "btn-outline-primary")" @onclick="() => SetView(ViewMode.Week)">Week</button>
+            <button class="btn @(view == ViewMode.Month ? "btn-primary" : "btn-outline-primary")" @onclick="() => SetView(ViewMode.Month)">Month</button>
+        </div>
+        <div class="btn-group btn-group-sm" role="group" aria-label="Navigate">
+            <button class="btn btn-outline-secondary" @onclick="PrevPeriod" title="Previous @PeriodWord">&lsaquo;</button>
+            <button class="btn btn-outline-secondary" @onclick="Today">Today</button>
+            <button class="btn btn-outline-secondary" @onclick="NextPeriod" title="Next @PeriodWord">&rsaquo;</button>
+        </div>
+        <span class="fw-semibold">@PeriodLabel</span>
+    </div>
+
     <h2 class="h5 mb-3">Your calendar</h2>
 
     <div class="card mb-4" style="max-width: 40rem;">
@@ -135,16 +149,16 @@ else
         </div>
 
         <div class="col-12 col-lg-7">
-            <h2 class="h5">Upcoming availability</h2>
+            <h2 class="h5">Availability — @PeriodLabel</h2>
 
-            @if (slots.Count == 0)
+            @if (PeriodSlots.Count == 0)
             {
-                <p class="text-muted">No upcoming slots yet. Add one to start offering times.</p>
+                <p class="text-muted">No availability this @PeriodWord. Add a slot, or change the view above.</p>
             }
             else
             {
                 <ul class="list-group">
-                    @foreach (var slot in slots)
+                    @foreach (var slot in PeriodSlots)
                     {
                         <li class="list-group-item d-flex justify-content-between align-items-start flex-wrap gap-2">
                             <div>
@@ -337,14 +351,14 @@ else
             <div class="alert alert-danger" role="alert">@bookingError</div>
         }
 
-        @if (bookingSlots.Count == 0)
+        @if (PeriodBookingSlots.Count == 0)
         {
-            <p class="text-muted">No open slots right now.</p>
+            <p class="text-muted">No open slots in this @PeriodWord.</p>
         }
         else
         {
             <ul class="list-group" style="max-width: 40rem;">
-                @foreach (var slot in bookingSlots)
+                @foreach (var slot in PeriodBookingSlots)
                 {
                     <li class="list-group-item d-flex justify-content-between align-items-center flex-wrap gap-2">
                         <div>
@@ -407,6 +421,38 @@ else
     private string? bookingMessage;
     private string? bookingError;
 
+    // Shared Week/Month view + the period being shown (applies to both calendars).
+    private enum ViewMode { Week, Month }
+    private ViewMode view = ViewMode.Week;
+    private DateTime anchorLocal = DateTime.UtcNow.Date;
+
+    private DateTime PeriodStartLocal => view == ViewMode.Week
+        ? StartOfWeek(anchorLocal)
+        : new DateTime(anchorLocal.Year, anchorLocal.Month, 1);
+    private DateTime PeriodEndLocal => view == ViewMode.Week
+        ? PeriodStartLocal.AddDays(7)
+        : PeriodStartLocal.AddMonths(1);
+    private DateTime PeriodStartUtc => TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(PeriodStartLocal, DateTimeKind.Unspecified), tz);
+    private DateTime PeriodEndUtc => TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(PeriodEndLocal, DateTimeKind.Unspecified), tz);
+    private string PeriodWord => view == ViewMode.Week ? "week" : "month";
+    private string PeriodLabel => view == ViewMode.Week
+        ? $"Week of {PeriodStartLocal:d MMM} – {PeriodEndLocal.AddDays(-1):d MMM yyyy}"
+        : PeriodStartLocal.ToString("MMMM yyyy");
+
+    private bool InPeriod(DateTime startUtc) => startUtc >= PeriodStartUtc && startUtc < PeriodEndUtc;
+
+    // Both calendars' slots, scoped to the selected week/month.
+    private IReadOnlyList<AvailabilitySlot> PeriodSlots => slots.Where(s => InPeriod(s.StartUtc)).ToList();
+    private IReadOnlyList<AvailabilitySlot> PeriodBookingSlots => bookingSlots.Where(s => InPeriod(s.StartUtc)).ToList();
+
+    // Monday-based week start.
+    private static DateTime StartOfWeek(DateTime d) => d.Date.AddDays(-(((int)d.DayOfWeek + 6) % 7));
+
+    private void SetView(ViewMode v) => view = v;
+    private void PrevPeriod() => anchorLocal = view == ViewMode.Week ? anchorLocal.AddDays(-7) : anchorLocal.AddMonths(-1);
+    private void NextPeriod() => anchorLocal = view == ViewMode.Week ? anchorLocal.AddDays(7) : anchorLocal.AddMonths(1);
+    private void Today() => anchorLocal = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz).Date;
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         // Runs only once the circuit is live, so JS interop is available here.
@@ -435,6 +481,9 @@ else
         var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
         form.Start = new DateTime(nowLocal.Year, nowLocal.Month, nowLocal.Day, nowLocal.Hour, 0, 0).AddHours(1);
         form.End = form.Start.AddHours(1);
+
+        // Anchor the week/month view on "today" in the user's timezone.
+        anchorLocal = nowLocal.Date;
 
         // Google Calendar connection state + any status from the connect/disconnect redirect.
         calendarConfigured = Calendar.IsConfigured;
