@@ -37,6 +37,14 @@ else
         <div class="alert alert-info" role="alert">@calendarStatus</div>
     }
 
+    @if (newSubscribers.Count > 0)
+    {
+        <div class="alert alert-success" role="alert">
+            You got @newSubscribers.Count new subscriber@(newSubscribers.Count == 1 ? "" : "s"):
+            @string.Join(", ", newSubscribers.Take(25).Select(s => s.Nickname))@(newSubscribers.Count > 25 ? $", and {newSubscribers.Count - 25} more" : "").
+        </div>
+    }
+
     <div class="card mb-4" style="max-width: 40rem;">
         <div class="card-body">
             <h2 class="h6 card-title">Google Calendar</h2>
@@ -334,6 +342,7 @@ else
     // Subscriptions.
     private string myPublicId = "";
     private List<SubscriptionView> subscriptions = new();
+    private List<NewSubscriber> newSubscribers = new();
     private string? subscribeCode;
     private string? subscribeMessage;
     private string? subscribeError;
@@ -373,6 +382,14 @@ else
         msConfigured = MicrosoftCalendar.IsConfigured;
         msConnected = msConfigured && await MicrosoftCalendar.IsConnectedAsync(userId);
         myPublicId = (await UserManager.FindByIdAsync(userId))?.PublicId ?? "";
+
+        // New-subscriber digest: show those gained since last visit (in subscribe order), then
+        // advance the high-water mark so they aren't shown again. No push/email — login only.
+        newSubscribers = (await Subscriptions.GetNewSubscribersAsync(userId)).ToList();
+        if (newSubscribers.Count > 0)
+        {
+            await Subscriptions.MarkSubscribersSeenAsync(userId, newSubscribers.Max(s => s.SubscribedUtc));
+        }
         var query = QueryHelpers.ParseQuery(Nav.ToAbsoluteUri(Nav.Uri).Query);
         if (query.TryGetValue("calendar", out var calendarResult))
         {

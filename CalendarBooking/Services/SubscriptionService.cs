@@ -92,7 +92,47 @@ public class SubscriptionService(AppDbContext db)
     /// <summary>How many users subscribe to this target.</summary>
     public Task<int> GetSubscriberCountAsync(string targetId, CancellationToken ct = default) =>
         db.Subscriptions.CountAsync(s => s.TargetId == targetId, ct);
+
+    /// <summary>
+    /// Subscribers gained since the target last checked (SubscribersSeenUtc), in subscribe
+    /// order. Shown as a login digest, then cleared via <see cref="MarkSubscribersSeenAsync"/>.
+    /// </summary>
+    public async Task<IReadOnlyList<NewSubscriber>> GetNewSubscribersAsync(string targetId, CancellationToken ct = default)
+    {
+        var seenUtc = await db.Users
+            .Where(u => u.Id == targetId)
+            .Select(u => u.SubscribersSeenUtc)
+            .FirstOrDefaultAsync(ct);
+
+        return await (
+            from s in db.Subscriptions
+            join u in db.Users on s.SubscriberId equals u.Id
+            where s.TargetId == targetId && (seenUtc == null || s.CreatedUtc > seenUtc)
+            orderby s.CreatedUtc
+            select new NewSubscriber(u.Nickname, s.CreatedUtc))
+            .ToListAsync(ct);
+    }
+
+    /// <summary>Advance the digest high-water mark so already-shown subscribers aren't shown again.</summary>
+    public async Task MarkSubscribersSeenAsync(string targetId, DateTime seenUtc, CancellationToken ct = default)
+    {
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == targetId, ct);
+        if (user is null)
+        {
+            return;
+        }
+
+        // Only move forward.
+        if (user.SubscribersSeenUtc is null || seenUtc > user.SubscribersSeenUtc)
+        {
+            user.SubscribersSeenUtc = seenUtc;
+            await db.SaveChangesAsync(ct);
+        }
+    }
 }
+
+/// <summary>A subscriber shown in the "new subscribers" digest.</summary>
+public record NewSubscriber(string Nickname, DateTime SubscribedUtc);
 
 /// <summary>A user this subscriber follows.</summary>
 public record SubscriptionView(string UserId, string Nickname, string PublicId);

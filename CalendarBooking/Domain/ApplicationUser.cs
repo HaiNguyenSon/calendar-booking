@@ -34,4 +34,12 @@ public class ApplicationUser : IdentityUser
     /// </summary>
     [MaxLength(150)]
     public string? Description { get; set; }
+
+    /// <summary>
+    /// High-water mark for the "new subscribers" digest: subscribers whose subscription is
+    /// newer than this are shown once when the user next visits their calendar, then this is
+    /// advanced. Null = never checked (all current subscribers are "new"). Avoids per-subscribe
+    /// notification spam.
+    /// </summary>
+    public DateTime? SubscribersSeenUtc { get; set; }
 }

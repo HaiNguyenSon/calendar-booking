@@ -91,6 +91,31 @@ public class SubscriptionServiceTests
     }
 
     [Fact]
+    public async Task New_subscriber_digest_lists_in_subscribe_order_then_clears_after_marking()
+    {
+        using var db = TestDb.NewContext();
+        var target = TestDb.AddUser(db, "target");
+        var first = TestDb.AddUser(db, "first");
+        var second = TestDb.AddUser(db, "second");
+        var svc = new SubscriptionService(db);
+
+        await svc.SubscribeAsync(first.Id, target.PublicId, Now);
+        await svc.SubscribeAsync(second.Id, target.PublicId, Now.AddMinutes(1));
+
+        var digest = await svc.GetNewSubscribersAsync(target.Id);
+        Assert.Equal(new[] { "first", "second" }, digest.Select(d => d.Nickname).ToArray()); // subscribe order
+
+        await svc.MarkSubscribersSeenAsync(target.Id, digest.Max(d => d.SubscribedUtc));
+        Assert.Empty(await svc.GetNewSubscribersAsync(target.Id)); // nothing new now
+
+        // A later subscriber shows up next time, but not the already-seen ones.
+        var third = TestDb.AddUser(db, "third");
+        await svc.SubscribeAsync(third.Id, target.PublicId, Now.AddMinutes(2));
+        var next = await svc.GetNewSubscribersAsync(target.Id);
+        Assert.Equal(new[] { "third" }, next.Select(d => d.Nickname).ToArray());
+    }
+
+    [Fact]
     public async Task GetSubscriptions_lists_who_you_follow()
     {
         using var db = TestDb.NewContext();
