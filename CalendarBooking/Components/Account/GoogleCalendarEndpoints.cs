@@ -61,8 +61,19 @@ internal static class GoogleCalendarEndpoints
             }
 
             var redirectUri = $"{http.Request.Scheme}://{http.Request.Host}{CallbackPath}";
-            var ok = await connector.CompleteAsync(userId, code, redirectUri);
-            return Results.Redirect(ok ? "/my?calendar=connected" : "/my?calendar=error");
+            try
+            {
+                var ok = await connector.CompleteAsync(userId, code, redirectUri);
+                return Results.Redirect(ok ? "/my?calendar=connected" : "/my?calendar=error");
+            }
+            catch (Exception ex)
+            {
+                // A bad/expired/denied code makes the token exchange throw — don't 500.
+                http.RequestServices.GetRequiredService<ILoggerFactory>()
+                    .CreateLogger("GoogleCalendarCallback")
+                    .LogError(ex, "Google Calendar token exchange failed.");
+                return Results.Redirect("/my?calendar=error");
+            }
         });
 
         // Disconnect (POST so it carries the antiforgery token from the form).
