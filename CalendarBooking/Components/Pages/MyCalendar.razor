@@ -435,9 +435,25 @@ else
     private DateTime PeriodStartUtc => TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(PeriodStartLocal, DateTimeKind.Unspecified), tz);
     private DateTime PeriodEndUtc => TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(PeriodEndLocal, DateTimeKind.Unspecified), tz);
     private string PeriodWord => view == ViewMode.Week ? "week" : "month";
-    private string PeriodLabel => view == ViewMode.Week
-        ? $"Week of {PeriodStartLocal:d MMM} – {PeriodEndLocal.AddDays(-1):d MMM yyyy}"
-        : PeriodStartLocal.ToString("MMMM yyyy");
+
+    // ISO-8601 week number (Monday-based, matches our week start), shown in both views.
+    private static int WeekOf(DateTime localDate) => System.Globalization.ISOWeek.GetWeekOfYear(localDate);
+
+    private string PeriodLabel
+    {
+        get
+        {
+            if (view == ViewMode.Week)
+            {
+                return $"Week {WeekOf(PeriodStartLocal)} · {PeriodStartLocal:d MMM} – {PeriodEndLocal.AddDays(-1):d MMM yyyy}";
+            }
+
+            var firstWeek = WeekOf(PeriodStartLocal);
+            var lastWeek = WeekOf(PeriodEndLocal.AddDays(-1));
+            var weeks = firstWeek == lastWeek ? $"Week {firstWeek}" : $"Weeks {firstWeek}–{lastWeek}";
+            return $"{PeriodStartLocal:MMMM yyyy} · {weeks}";
+        }
+    }
 
     private bool InPeriod(DateTime startUtc) => startUtc >= PeriodStartUtc && startUtc < PeriodEndUtc;
 
