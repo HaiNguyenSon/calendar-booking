@@ -1,0 +1,113 @@
+@page "/Account/Profile"
+@attribute [Authorize]
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Identity
+@inject UserManager<ApplicationUser> UserManager
+@inject IdentityRedirectManager RedirectManager
+
+@* Static SSR (no @rendermode): edits user fields via UserManager. PhoneNumber is the
+   built-in Identity column; FirstName/LastName/Description are ours. *@
+
+<PageTitle>Profile</PageTitle>
+
+<h1>Profile</h1>
+<StatusMessage />
+
+<div class="row">
+    <div class="col-md-6">
+        <p class="text-muted">
+            Nickname: <strong>@user?.Nickname</strong> · Your code: <strong>@user?.PublicId</strong>
+        </p>
+
+        <EditForm Model="Input" FormName="profile" OnValidSubmit="OnValidSubmitAsync" method="post">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="text-danger" role="alert" />
+
+            <div class="form-floating mb-3">
+                <InputText @bind-Value="Input.FirstName" class="form-control" placeholder="First name" />
+                <label>First name</label>
+                <ValidationMessage For="() => Input.FirstName" class="text-danger" />
+            </div>
+            <div class="form-floating mb-3">
+                <InputText @bind-Value="Input.LastName" class="form-control" placeholder="Last name" />
+                <label>Last name</label>
+                <ValidationMessage For="() => Input.LastName" class="text-danger" />
+            </div>
+            <div class="form-floating mb-3">
+                <InputText @bind-Value="Input.PhoneNumber" class="form-control" placeholder="Phone number" />
+                <label>Phone number</label>
+                <ValidationMessage For="() => Input.PhoneNumber" class="text-danger" />
+            </div>
+            <div class="form-floating mb-3">
+                <InputText @bind-Value="Input.Description" class="form-control" placeholder="Short bio" />
+                <label>Bio (shown publicly)</label>
+                <ValidationMessage For="() => Input.Description" class="text-danger" />
+            </div>
+
+            <button type="submit" class="btn btn-primary w-100">Save</button>
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    private ApplicationUser user = default!;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm]
+    private InputModel Input { get; set; } = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var current = await UserManager.GetUserAsync(HttpContext.User);
+        if (current is null)
+        {
+            RedirectManager.RedirectTo("Account/Login");
+            return;
+        }
+
+        user = current;
+
+        // ??= so values typed into the form (POST) aren't overwritten by the stored ones.
+        Input.FirstName ??= user.FirstName;
+        Input.LastName ??= user.LastName;
+        Input.PhoneNumber ??= user.PhoneNumber;
+        Input.Description ??= user.Description;
+    }
+
+    private async Task OnValidSubmitAsync()
+    {
+        user.FirstName = Input.FirstName;
+        user.LastName = Input.LastName;
+        user.Description = Input.Description;
+
+        // SetPhoneNumberAsync persists the user (incl. the fields set above) via UpdateAsync.
+        var result = await UserManager.SetPhoneNumberAsync(user, Input.PhoneNumber);
+        if (!result.Succeeded)
+        {
+            RedirectManager.RedirectToCurrentPageWithStatus("Error: Couldn't update your profile.", HttpContext);
+        }
+
+        RedirectManager.RedirectToCurrentPageWithStatus("Your profile has been updated.", HttpContext);
+    }
+
+    private sealed class InputModel
+    {
+        [StringLength(100)]
+        [Display(Name = "First name")]
+        public string? FirstName { get; set; }
+
+        [StringLength(100)]
+        [Display(Name = "Last name")]
+        public string? LastName { get; set; }
+
+        [Phone]
+        [Display(Name = "Phone number")]
+        public string? PhoneNumber { get; set; }
+
+        [StringLength(150)]
+        [Display(Name = "Bio")]
+        public string? Description { get; set; }
+    }
+}
