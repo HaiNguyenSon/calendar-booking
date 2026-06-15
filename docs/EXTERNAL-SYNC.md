@@ -1,41 +1,54 @@
 # External calendar sync (Phase 7)
 
-**Status: scaffolding only.** The extension seam is in place and unit-tested, but no real
-provider is implemented yet. Connecting Google Calendar or Microsoft Graph needs live OAuth
-credentials, the provider's API client package, and an offline refresh-token flow — none of
-which are wired up. This document is the plan for finishing it.
+**Status: Google Calendar is implemented (push + free/busy); Microsoft Graph is not.** The
+Google integration builds and is wired end to end, but the OAuth round-trip and live API
+calls can only be verified with real Google credentials and a real account — see
+"Verifying" below.
 
-## What exists today
+## The seam
 
 - `IExternalCalendarClient` — one connected provider. Two operations:
   - `PushBookingAsync` — push a confirmed booking out to the user's external calendar.
   - `GetBusyIntervalsAsync` — read the user's busy times, to block their availability.
 - `CalendarSyncService` — fans out to every registered `IExternalCalendarClient`,
   best-effort (one failing provider never breaks the others). With no client registered it
-  is a safe no-op, so callers can use it unconditionally. `HasProviders` reports whether any
-  are connected.
+  is a safe no-op. `HasProviders` reports whether any are connected.
 
-## What's left to build
+## Google Calendar
 
-1. **OAuth with calendar scopes.** Reuse the existing Google external login (see the README)
-   but request calendar scopes (e.g. `https://www.googleapis.com/auth/calendar`) and offline
-   access so we receive a refresh token. Microsoft Graph is analogous.
-2. **Token storage.** Add an `ExternalCalendarConnection` entity (UserId, Provider, encrypted
-   refresh token, connected-at) and a migration. Encrypt tokens at rest.
-3. **Provider client.** Implement `IExternalCalendarClient` for Google using
-   `Google.Apis.Calendar.v3`: map a `Booking` to a calendar event for `PushBookingAsync`, and
-   query free/busy for `GetBusyIntervalsAsync`. Register it in `Program.cs`.
-4. **Wire the hooks.**
-   - After a booking is confirmed (instant book, approval, on-behalf-of), call
-     `CalendarSyncService.PushBookingAsync`. Do it out-of-band (like the email dispatcher) so
-     a slow API never blocks the booking transaction.
-   - When listing or claiming availability, subtract `GetBusyIntervalsAsync` so externally
-     busy times don't show as bookable.
-5. **Two-way reconciliation.** Decide how external changes (an event deleted in Google) flow
-   back, and how to avoid loops.
+- **Credentials:** reuses the Google login credentials (`Authentication:Google:ClientId` /
+  `ClientSecret`). The `GoogleCalendarClient` is registered as an `IExternalCalendarClient`
+  only when those are set.
+- **Connect flow** (`GoogleCalendarConnector` + `GoogleCalendarEndpoints`): the user clicks
+  *Connect Google Calendar* on `/my` → `GET /Account/Calendar/Connect` redirects to Google's
+  consent screen (offline access, so we get a refresh token) → Google redirects to
+  `GET /Account/Calendar/Callback`, which exchanges the code and stores the refresh token
+  **encrypted** (ASP.NET Data Protection) in `ExternalCalendarConnection`. Disconnect via
+  `POST /Account/Calendar/Disconnect`.
+- **Push:** `CalendarSyncDispatcher` (background) pushes confirmed bookings to both parties'
+  calendars out-of-band, once each (`Booking.CalendarSyncedUtc`), so a slow API never blocks
+  a booking.
+- **Free/busy:** `GoogleCalendarClient.GetBusyIntervalsAsync` is implemented via the
+  Freebusy API. **Not yet wired into availability** — subtracting busy times when listing or
+  claiming slots is the remaining "pull" step.
 
-## Why it's structured this way
+### Google Cloud setup
 
-Keeping the provider behind `IExternalCalendarClient` means the booking code depends only on
-`CalendarSyncService`, never on Google/Microsoft specifics, and the feature can ship one
-provider at a time. The dispatcher is already covered by unit tests using a fake client.
+1. Reuse the OAuth client from Google login. Add the calendar scope is automatic (requested
+   at connect time); just add the redirect URI:
+   `https://localhost:7043/Account/Calendar/Callback` (and your prod equivalent).
+2. Enable the **Google Calendar API** for the project.
+3. Set `Authentication:Google:ClientId` / `ClientSecret` (user-secrets in dev — see README).
+
+### Verifying (needs a real account)
+
+Sign in, open `/my`, click *Connect Google Calendar*, grant access. Then make a confirmed
+booking; within ~30s the `CalendarSyncDispatcher` should create an event on the primary
+Google calendar. None of this can be exercised without live credentials, so it is not
+covered by automated tests (the dispatcher/fan-out logic is, via a fake client).
+
+## What's left
+
+- Wire `GetBusyIntervalsAsync` into availability so externally-busy times aren't bookable.
+- Two-way reconciliation (handle events changed/deleted in Google; avoid loops).
+- A Microsoft Graph `IExternalCalendarClient` (same shape, analogous OAuth).

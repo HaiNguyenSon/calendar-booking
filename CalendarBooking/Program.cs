@@ -108,6 +108,8 @@ if (!string.IsNullOrEmpty(googleClientId) && !string.IsNullOrEmpty(googleClientS
 {
     builder.Services.AddScoped<CalendarBooking.Services.IExternalCalendarClient, CalendarBooking.Services.GoogleCalendarClient>();
 }
+// The push dispatcher idles when no providers are configured, so it's always registered.
+builder.Services.AddHostedService<CalendarBooking.Services.CalendarSyncDispatcher>();
 
 var app = builder.Build();
 
