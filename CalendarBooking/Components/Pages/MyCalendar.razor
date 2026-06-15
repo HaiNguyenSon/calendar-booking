@@ -1,21 +1,193 @@
 @page "/my"
 @attribute [Authorize]
+@rendermode InteractiveServer
+@using System.Security.Claims
+@using CalendarBooking.Domain
+@using CalendarBooking.Services
+@inject AvailabilityService Availability
+@inject IJSRuntime JS
 
-@* PROTECTED PAGE. The [Authorize] attribute is the auth wall: an unauthenticated
-   visitor is sent to the login page (see AuthorizeRouteView -> RedirectToLogin in
-   Routes.razor) and returned here after signing in. Most pages are public by default;
-   only pages/actions that need a signed-in user carry [Authorize]. *@
+@* PROTECTED + INTERACTIVE. [Authorize] gates it: anonymous users are redirected to login
+   server-side during prerender (Routes.razor -> RedirectToLogin). The data load and the
+   browser-timezone lookup happen in OnAfterRenderAsync, the first point where JS is
+   available, so until then the page shows "Loading…". Mobile-first: single column on
+   phones, two columns from large screens up. *@
 
 <PageTitle>My Calendar</PageTitle>
 
 <h1>My Calendar</h1>
 
-<AuthorizeView>
-    <p>Signed in as <strong>@context.User.Identity?.Name</strong>.</p>
-</AuthorizeView>
+@if (!loaded)
+{
+    <p><em>Loading…</em></p>
+}
+else
+{
+    <div class="row g-4">
+        <div class="col-12 col-lg-5">
+            <div class="card">
+                <div class="card-body">
+                    <h2 class="h5 card-title">Add availability</h2>
 
-<p>
-    This is your private area. Your availability slots and the bookings where you are the
-    attendee will live here (Phase 1). Browsing other people's calendars is public; this
-    page requires you to be signed in.
-</p>
+                    @if (error is not null)
+                    {
+                        <div class="alert alert-danger py-2" role="alert">@error</div>
+                    }
+
+                    <EditForm Model="form" OnValidSubmit="AddSlotAsync">
+                        <div class="mb-3">
+                            <label class="form-label" for="start">Start</label>
+                            <InputDate Type="InputDateType.DateTimeLocal" id="start" class="form-control" @bind-Value="form.Start" />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="end">End</label>
+                            <InputDate Type="InputDateType.DateTimeLocal" id="end" class="form-control" @bind-Value="form.End" />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="type">When someone books this</label>
+                            <InputSelect id="type" class="form-select" @bind-Value="form.SlotType">
+                                <option value="@SlotType.Instant">Confirm instantly</option>
+                                <option value="@SlotType.ApprovalRequired">Ask my approval first</option>
+                            </InputSelect>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">Add slot</button>
+                    </EditForm>
+
+                    <p class="text-muted small mt-3 mb-0">Times are in your timezone (@tzLabel).</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-lg-7">
+            <h2 class="h5">Upcoming availability</h2>
+
+            @if (slots.Count == 0)
+            {
+                <p class="text-muted">No upcoming slots yet. Add one to start offering times.</p>
+            }
+            else
+            {
+                <ul class="list-group">
+                    @foreach (var slot in slots)
+                    {
+                        <li class="list-group-item d-flex justify-content-between align-items-start flex-wrap gap-2">
+                            <div>
+                                <div class="fw-semibold">@FormatRange(slot.StartUtc, slot.EndUtc)</div>
+                                <span class="badge @(slot.SlotType == SlotType.Instant ? "bg-success" : "bg-warning text-dark")">
+                                    @(slot.SlotType == SlotType.Instant ? "Instant" : "Approval")
+                                </span>
+                                @if (slot.IsBooked)
+                                {
+                                    <span class="badge bg-secondary">Booked</span>
+                                }
+                            </div>
+                            <button class="btn btn-outline-danger btn-sm" disabled="@slot.IsBooked"
+                                    @onclick="() => DeleteSlotAsync(slot.Id)">
+                                Delete
+                            </button>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthState { get; set; } = default!;
+
+    private bool loaded;
+    private string userId = "";
+    private TimeZoneInfo tz = TimeZoneInfo.Utc;
+    private string tzLabel = "UTC";
+    private List<AvailabilitySlot> slots = new();
+    private string? error;
+    private readonly SlotForm form = new();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Runs only once the circuit is live, so JS interop is available here.
+        if (!firstRender)
+        {
+            return;
+        }
+
+        var state = await AuthState;
+        userId = state.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+
+        // Resolve the browser timezone so we can store UTC but show local times.
+        try
+        {
+            var ianaId = await JS.InvokeAsync<string>("calendarBooking.getTimeZone");
+            tz = TimeZoneInfo.FindSystemTimeZoneById(ianaId);
+            tzLabel = tz.Id;
+        }
+        catch
+        {
+            tz = TimeZoneInfo.Utc;
+            tzLabel = "UTC";
+        }
+
+        // Default the form to the next full hour, for a one-hour slot.
+        var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
+        form.Start = new DateTime(nowLocal.Year, nowLocal.Month, nowLocal.Day, nowLocal.Hour, 0, 0).AddHours(1);
+        form.End = form.Start.AddHours(1);
+
+        await LoadAsync();
+        loaded = true;
+        StateHasChanged();
+    }
+
+    private async Task LoadAsync()
+    {
+        slots = (await Availability.GetUpcomingOwnedSlotsAsync(userId, DateTime.UtcNow)).ToList();
+    }
+
+    private async Task AddSlotAsync()
+    {
+        error = null;
+
+        // The form holds local wall-clock time; convert to UTC for storage.
+        var startUtc = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(form.Start, DateTimeKind.Unspecified), tz);
+        var endUtc = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(form.End, DateTimeKind.Unspecified), tz);
+
+        var result = await Availability.CreateOneOffAsync(userId, startUtc, endUtc, form.SlotType, DateTime.UtcNow);
+        if (!result.Ok)
+        {
+            error = result.Error;
+            return;
+        }
+
+        await LoadAsync();
+    }
+
+    private async Task DeleteSlotAsync(Guid slotId)
+    {
+        error = null;
+        var result = await Availability.DeleteAsync(userId, slotId);
+        if (!result.Ok)
+        {
+            error = result.Error;
+            return;
+        }
+
+        await LoadAsync();
+    }
+
+    private string FormatRange(DateTime startUtc, DateTime endUtc)
+    {
+        var start = TimeZoneInfo.ConvertTimeFromUtc(startUtc, tz);
+        var end = TimeZoneInfo.ConvertTimeFromUtc(endUtc, tz);
+        // Omit the date on the end when the slot stays within one day.
+        var endText = end.Date == start.Date ? end.ToString("HH:mm") : end.ToString("ddd d MMM, HH:mm");
+        return $"{start:ddd d MMM, HH:mm} – {endText}";
+    }
+
+    private sealed class SlotForm
+    {
+        public DateTime Start { get; set; }
+        public DateTime End { get; set; }
+        public SlotType SlotType { get; set; } = SlotType.Instant;
+    }
+}

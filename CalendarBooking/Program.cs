@@ -83,6 +83,9 @@ builder.Services.AddIdentityCore<ApplicationUser>(options =>
 // Identity needs an email sender registered; this one is a no-op until Phase 5.
 builder.Services.AddSingleton<IEmailSender<ApplicationUser>, IdentityNoOpEmailSender>();
 
+// Domain services.
+builder.Services.AddScoped<CalendarBooking.Services.AvailabilityService>();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
