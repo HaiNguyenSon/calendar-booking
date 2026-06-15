@@ -1,0 +1,21 @@
+@page "/my"
+@attribute [Authorize]
+
+@* PROTECTED PAGE. The [Authorize] attribute is the auth wall: an unauthenticated
+   visitor is sent to the login page (see AuthorizeRouteView -> RedirectToLogin in
+   Routes.razor) and returned here after signing in. Most pages are public by default;
+   only pages/actions that need a signed-in user carry [Authorize]. *@
+
+<PageTitle>My Calendar</PageTitle>
+
+<h1>My Calendar</h1>
+
+<AuthorizeView>
+    <p>Signed in as <strong>@context.User.Identity?.Name</strong>.</p>
+</AuthorizeView>
+
+<p>
+    This is your private area. Your availability slots and the bookings where you are the
+    attendee will live here (Phase 1). Browsing other people's calendars is public; this
+    page requires you to be signed in.
+</p>
