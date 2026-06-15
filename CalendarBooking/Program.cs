@@ -94,6 +94,8 @@ builder.Services.AddScoped<CalendarBooking.Services.AvailabilityService>();
 builder.Services.AddScoped<CalendarBooking.Services.BookingService>();
 builder.Services.AddScoped<CalendarBooking.Services.ApprovalService>();
 builder.Services.AddScoped<CalendarBooking.Services.CancellationService>();
+builder.Services.AddScoped<CalendarBooking.Services.AccountCleanupService>();
+builder.Services.AddHostedService<CalendarBooking.Services.StaleRequestService>();
 
 var app = builder.Build();
 
