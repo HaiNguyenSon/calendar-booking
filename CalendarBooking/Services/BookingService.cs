@@ -126,6 +126,7 @@ public class BookingService(AppDbContext db, IOptions<BookingOptions> options, N
             return Result.Fail("That slot has just been taken.");
         }
 
+        notifications.PushQueued();
         return Result.Booked(booking);
     }
 
@@ -179,6 +180,7 @@ public class BookingService(AppDbContext db, IOptions<BookingOptions> options, N
         notifications.Queue(slot.OwnerId, $"{requesterNickname} requested one of your slots.", nowUtc);
 
         await db.SaveChangesAsync(ct);
+        notifications.PushQueued();
         return Result.Requested(request);
     }
 

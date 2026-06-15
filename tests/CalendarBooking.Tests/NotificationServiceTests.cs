@@ -14,7 +14,7 @@ public class NotificationServiceTests
     {
         using var db = TestDb.NewContext();
         var alice = TestDb.AddUser(db, "alice");
-        var svc = new NotificationService(db);
+        var svc = new NotificationService(db, new NotificationBroadcaster());
 
         svc.Queue(alice.Id, "Hello", Now);
         await db.SaveChangesAsync();
@@ -27,7 +27,7 @@ public class NotificationServiceTests
     {
         using var db = TestDb.NewContext();
         var alice = TestDb.AddUser(db, "alice");
-        var svc = new NotificationService(db);
+        var svc = new NotificationService(db, new NotificationBroadcaster());
         svc.Queue(alice.Id, "One", Now);
         svc.Queue(alice.Id, "Two", Now);
         await db.SaveChangesAsync();
@@ -45,7 +45,7 @@ public class NotificationServiceTests
         var alice = TestDb.AddUser(db, "alice");
         var bob = TestDb.AddUser(db, "bob");
         var slot = TestDb.AddSlot(db, alice.Id, Now.AddHours(1), Now.AddHours(2), SlotType.Instant);
-        var notifications = new NotificationService(db);
+        var notifications = new NotificationService(db, new NotificationBroadcaster());
         var booking = new BookingService(db, Options.Create(new BookingOptions()), notifications);
 
         await booking.BookInstantAsync(slot.Id, bob.Id, Now);
@@ -76,7 +76,7 @@ public class NotificationServiceTests
         db.Bookings.Add(booking);
         await db.SaveChangesAsync();
 
-        var svc = new CancellationService(db, new NotificationService(db));
+        var svc = new CancellationService(db, new NotificationService(db, new NotificationBroadcaster()));
         await svc.CancelAsync(booking.Id, bob.Id, "Conflict", Now);
 
         // The attendee cancelled, so the owner is notified, with the reason.

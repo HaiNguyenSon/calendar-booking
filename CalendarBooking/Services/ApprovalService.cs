@@ -91,6 +91,7 @@ public class ApprovalService(AppDbContext db, NotificationService notifications)
             return Result.Fail("That slot was just taken.");
         }
 
+        notifications.PushQueued();
         return Result.Success(booking);
     }
 
@@ -112,6 +113,7 @@ public class ApprovalService(AppDbContext db, NotificationService notifications)
         request.Status = RequestStatus.Declined;
         notifications.Queue(request.RequesterId, "Your booking request was declined.", DateTime.UtcNow);
         await db.SaveChangesAsync(ct);
+        notifications.PushQueued();
         return Result.Success();
     }
 
@@ -181,6 +183,7 @@ public class ApprovalService(AppDbContext db, NotificationService notifications)
             return Result.Fail("That slot was just taken.");
         }
 
+        notifications.PushQueued();
         return Result.Success(booking);
     }
 }

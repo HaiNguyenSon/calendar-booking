@@ -93,6 +93,7 @@ public class CancellationService(AppDbContext db, NotificationService notificati
         notifications.Queue(otherPartyId, $"A booking was cancelled. Reason: {reason}", nowUtc);
 
         await db.SaveChangesAsync(ct);
+        notifications.PushQueued();
         return Result.Success();
     }
 }

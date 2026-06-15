@@ -85,7 +85,11 @@ builder.Services.AddSingleton<IEmailSender<ApplicationUser>, IdentityNoOpEmailSe
 
 // Domain services.
 builder.Services.Configure<CalendarBooking.Services.BookingOptions>(builder.Configuration.GetSection("Booking"));
+builder.Services.AddSingleton<CalendarBooking.Services.NotificationBroadcaster>();
+builder.Services.AddSingleton<CalendarBooking.Services.IAppEmailSender, CalendarBooking.Services.LoggingAppEmailSender>();
 builder.Services.AddScoped<CalendarBooking.Services.NotificationService>();
+builder.Services.AddHostedService<CalendarBooking.Services.EmailDispatcherService>();
+builder.Services.AddHostedService<CalendarBooking.Services.ReminderService>();
 builder.Services.AddScoped<CalendarBooking.Services.AvailabilityService>();
 builder.Services.AddScoped<CalendarBooking.Services.BookingService>();
 builder.Services.AddScoped<CalendarBooking.Services.ApprovalService>();

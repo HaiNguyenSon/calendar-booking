@@ -1,10 +1,13 @@
 @rendermode InteractiveServer
 @using System.Security.Claims
 @using CalendarBooking.Services
+@implements IDisposable
 @inject NotificationService Notifications
+@inject NotificationBroadcaster Broadcaster
 
-@* Interactive island in the nav. Shows the unread count for the signed-in user. The
-   count is refreshed on each render now; Phase 5b pushes live updates over SignalR. *@
+@* Interactive island in the nav showing the signed-in user's unread count. It subscribes
+   to the broadcaster, so when a notification is created for this user — by anyone, or by a
+   background job — the count refreshes live over their Blazor circuit. *@
 
 <a class="nav-link" href="notifications">
     <span class="bi bi-bell-fill-nav-menu" aria-hidden="true"></span> Notifications
@@ -18,15 +21,34 @@
     [CascadingParameter]
     private Task<AuthenticationState> AuthState { get; set; } = default!;
 
+    private string userId = "";
     private int unread;
 
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthState;
-        var userId = state.User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!string.IsNullOrEmpty(userId))
+        userId = state.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+        if (userId.Length > 0)
         {
             unread = await Notifications.GetUnreadCountAsync(userId);
+            Broadcaster.Changed += OnChanged;
         }
     }
+
+    private void OnChanged(string changedUserId)
+    {
+        if (changedUserId != userId)
+        {
+            return;
+        }
+
+        // Marshal back onto this component's circuit before touching state.
+        _ = InvokeAsync(async () =>
+        {
+            unread = await Notifications.GetUnreadCountAsync(userId);
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose() => Broadcaster.Changed -= OnChanged;
 }

@@ -11,8 +11,10 @@ namespace CalendarBooking.Services;
 /// Emailing happens out-of-band (see the background email dispatcher), keyed off
 /// <see cref="Notification.EmailedUtc"/>.
 /// </summary>
-public class NotificationService(AppDbContext db)
+public class NotificationService(AppDbContext db, NotificationBroadcaster broadcaster)
 {
+    private readonly HashSet<string> queuedRecipients = new();
+
     /// <summary>Add a notification to the context for saving alongside the caller's changes.</summary>
     public void Queue(string userId, string message, DateTime nowUtc)
     {
@@ -23,6 +25,20 @@ public class NotificationService(AppDbContext db)
             Message = message,
             CreatedUtc = nowUtc,
         });
+        queuedRecipients.Add(userId);
+    }
+
+    /// <summary>
+    /// Call AFTER a successful SaveChanges: pushes a live refresh to each queued recipient's
+    /// open pages (over their Blazor circuit) and resets the queue.
+    /// </summary>
+    public void PushQueued()
+    {
+        foreach (var userId in queuedRecipients)
+        {
+            broadcaster.NotifyChanged(userId);
+        }
+        queuedRecipients.Clear();
     }
 
     public async Task<IReadOnlyList<Notification>> GetRecentAsync(string userId, int take = 50, CancellationToken ct = default)

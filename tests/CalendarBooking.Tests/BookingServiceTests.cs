@@ -11,7 +11,7 @@ public class BookingServiceTests
     private static readonly DateTime Now = TestDb.Now;
 
     private static BookingService NewService(AppDbContext db, int maxPending = 5)
-        => new(db, Options.Create(new BookingOptions { MaxPendingRequests = maxPending }), new NotificationService(db));
+        => new(db, Options.Create(new BookingOptions { MaxPendingRequests = maxPending }), new NotificationService(db, new NotificationBroadcaster()));
 
     [Fact]
     public async Task BookInstant_creates_a_confirmed_booking_and_marks_the_slot_booked()
