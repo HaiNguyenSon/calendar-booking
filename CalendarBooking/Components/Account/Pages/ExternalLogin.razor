@@ -134,6 +134,8 @@
                 {
                     Logger.LogInformation("Linked {LoginProvider} login to existing account {Email}.",
                         externalLoginInfo.LoginProvider, email);
+                    // Fill in the name from the provider if we don't already have it.
+                    await FillNamesFromProviderAsync(existingUser, overwrite: false);
                     await SignInManager.SignInAsync(existingUser, isPersistent: false, externalLoginInfo.LoginProvider);
                     RedirectManager.RedirectTo(ReturnUrl);
                 }
@@ -164,6 +166,9 @@
         var user = CreateUser();
         user.Nickname = nickname;
         user.PublicId = await GenerateUniquePublicIdAsync();
+        // Pull the name from the provider profile (Google: given_name / family_name).
+        user.FirstName = externalLoginInfo.Principal.FindFirstValue(ClaimTypes.GivenName);
+        user.LastName = externalLoginInfo.Principal.FindFirstValue(ClaimTypes.Surname);
         await UserStore.SetUserNameAsync(user, emailFromProvider, CancellationToken.None);
         var emailStore = GetEmailStore();
         await emailStore.SetEmailAsync(user, emailFromProvider, CancellationToken.None);
@@ -185,6 +190,29 @@
         }
 
         message = $"Error: {string.Join(", ", result.Errors.Select(e => e.Description))}";
+    }
+
+    private async Task FillNamesFromProviderAsync(ApplicationUser user, bool overwrite)
+    {
+        var firstName = externalLoginInfo.Principal.FindFirstValue(ClaimTypes.GivenName);
+        var lastName = externalLoginInfo.Principal.FindFirstValue(ClaimTypes.Surname);
+
+        var changed = false;
+        if (!string.IsNullOrEmpty(firstName) && (overwrite || string.IsNullOrEmpty(user.FirstName)))
+        {
+            user.FirstName = firstName;
+            changed = true;
+        }
+        if (!string.IsNullOrEmpty(lastName) && (overwrite || string.IsNullOrEmpty(user.LastName)))
+        {
+            user.LastName = lastName;
+            changed = true;
+        }
+
+        if (changed)
+        {
+            await UserManager.UpdateAsync(user);
+        }
     }
 
     private async Task<string> GenerateUniquePublicIdAsync()

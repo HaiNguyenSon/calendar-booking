@@ -36,6 +36,17 @@ public class ApplicationUser : IdentityUser
     public string? Description { get; set; }
 
     /// <summary>
+    /// Given name. For accounts linked to an external provider (Google) this is populated
+    /// from the provider's profile (given_name); null for local accounts unless set.
+    /// </summary>
+    [MaxLength(100)]
+    public string? FirstName { get; set; }
+
+    /// <summary>Family name; populated from the provider's profile (family_name) when linked.</summary>
+    [MaxLength(100)]
+    public string? LastName { get; set; }
+
+    /// <summary>
     /// High-water mark for the "new subscribers" digest: subscribers whose subscription is
     /// newer than this are shown once when the user next visits their calendar, then this is
     /// advanced. Null = never checked (all current subscribers are "new"). Avoids per-subscribe
