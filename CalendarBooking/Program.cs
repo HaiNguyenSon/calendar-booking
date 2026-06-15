@@ -71,9 +71,11 @@ authenticationBuilder.AddIdentityCookies();
 // is now included so the login page can sign users in.
 builder.Services.AddIdentityCore<ApplicationUser>(options =>
     {
-        // Email confirmation is not wired up until Phase 5. Keeping this false lets a
-        // newly registered user log in immediately; flip it to true once SMTP exists.
-        options.SignIn.RequireConfirmedAccount = false;
+        // Config-driven: keep false (immediate sign-in) when there's no mail server; set
+        // Identity:RequireConfirmedAccount=true in production (with SMTP) to require a
+        // confirmed email before login.
+        options.SignIn.RequireConfirmedAccount =
+            builder.Configuration.GetValue<bool>("Identity:RequireConfirmedAccount");
     })
     .AddRoles<IdentityRole>()
     .AddEntityFrameworkStores<AppDbContext>()

@@ -1,11 +1,15 @@
 @page "/Account/Register"
 @using System.ComponentModel.DataAnnotations
+@using System.Text
+@using System.Text.Encodings.Web
 @using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.WebUtilities
 @using Microsoft.EntityFrameworkCore
 
 @inject UserManager<ApplicationUser> UserManager
 @inject IUserStore<ApplicationUser> UserStore
 @inject SignInManager<ApplicationUser> SignInManager
+@inject IEmailSender<ApplicationUser> EmailSender
 @inject ILogger<Register> Logger
 @inject NavigationManager NavigationManager
 @inject IdentityRedirectManager RedirectManager
@@ -76,7 +80,17 @@
             .AnyAsync(u => u.Nickname.ToLower() == nickname.ToLower());
         if (nicknameTaken)
         {
+            // Nicknames are public, so revealing a clash is fine.
             identityErrors = new[] { new IdentityError { Description = "That nickname is already taken." } };
+            return;
+        }
+
+        // Enumeration-safe: if the email already has an account, don't say so. Behave exactly
+        // as a fresh sign-up would — go to the confirmation page — without creating a duplicate
+        // or signing anyone in. (The real owner just gets no email.)
+        if (await UserManager.FindByEmailAsync(Input.Email) is not null)
+        {
+            RedirectManager.RedirectTo("Account/RegisterConfirmation", new() { ["email"] = Input.Email });
             return;
         }
 
@@ -91,16 +105,41 @@
         var result = await UserManager.CreateAsync(user, Input.Password);
         if (!result.Succeeded)
         {
+            // A duplicate-email race lands here; treat it like the enumeration-safe path
+            // rather than echoing "email already taken".
+            if (result.Errors.All(e => e.Code is "DuplicateUserName" or "DuplicateEmail"))
+            {
+                RedirectManager.RedirectTo("Account/RegisterConfirmation", new() { ["email"] = Input.Email });
+                return;
+            }
             identityErrors = result.Errors;
             return;
         }
 
         Logger.LogInformation("User created a new account with password.");
 
-        // Email confirmation is deferred (Phase 5) and RequireConfirmedAccount is
-        // false, so sign the new user in immediately.
+        if (UserManager.Options.SignIn.RequireConfirmedAccount)
+        {
+            // Send a confirmation link and don't sign in until the email is confirmed.
+            await SendConfirmationEmailAsync(user, Input.Email);
+            RedirectManager.RedirectTo("Account/RegisterConfirmation", new() { ["email"] = Input.Email });
+            return;
+        }
+
+        // Confirmation not required (e.g. no SMTP yet) — sign in immediately.
         await SignInManager.SignInAsync(user, isPersistent: false);
         RedirectManager.RedirectTo(ReturnUrl);
+    }
+
+    private async Task SendConfirmationEmailAsync(ApplicationUser user, string email)
+    {
+        var userId = await UserManager.GetUserIdAsync(user);
+        var token = await UserManager.GenerateEmailConfirmationTokenAsync(user);
+        var code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
+        var callbackUrl = NavigationManager.GetUriWithQueryParameters(
+            NavigationManager.ToAbsoluteUri("Account/ConfirmEmail").AbsoluteUri,
+            new Dictionary<string, object?> { ["userId"] = userId, ["code"] = code, ["returnUrl"] = ReturnUrl });
+        await EmailSender.SendConfirmationLinkAsync(user, email, HtmlEncoder.Default.Encode(callbackUrl));
     }
 
     private static ApplicationUser CreateUser()

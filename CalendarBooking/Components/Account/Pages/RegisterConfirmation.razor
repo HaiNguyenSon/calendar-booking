@@ -1,0 +1,28 @@
+@page "/Account/RegisterConfirmation"
+
+<PageTitle>Register confirmation</PageTitle>
+
+<h1>Check your email</h1>
+
+<p>
+    We've sent a confirmation link to
+    @if (!string.IsNullOrEmpty(Email))
+    {
+        <strong>@Email</strong>
+    }
+    else
+    {
+        <text>your email address</text>
+    }.
+    Click it to finish creating your account, then sign in.
+</p>
+<p class="text-muted small">
+    Didn't get it? Check your spam folder, or it may already belong to an existing account.
+</p>
+
+@code {
+    // This page is intentionally identical whether or not the email was new — it must not
+    // reveal whether an account already exists (see Register's enumeration-safe path).
+    [SupplyParameterFromQuery]
+    private string? Email { get; set; }
+}

@@ -163,6 +163,9 @@
         await UserStore.SetUserNameAsync(user, emailFromProvider, CancellationToken.None);
         var emailStore = GetEmailStore();
         await emailStore.SetEmailAsync(user, emailFromProvider, CancellationToken.None);
+        // The provider already verified this email, so confirm it — otherwise these users
+        // couldn't sign in when RequireConfirmedAccount is true.
+        await emailStore.SetEmailConfirmedAsync(user, true, CancellationToken.None);
 
         var result = await UserManager.CreateAsync(user);
         if (result.Succeeded)
