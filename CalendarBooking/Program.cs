@@ -1,6 +1,8 @@
 using CalendarBooking.Components;
+using CalendarBooking.Components.Account;
 using CalendarBooking.Data;
 using CalendarBooking.Domain;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,6 +12,12 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
+// Make the signed-in user available to components as a cascading AuthenticationState,
+// and supply/revalidate that state for interactive Server circuits.
+builder.Services.AddCascadingAuthenticationState();
+builder.Services.AddScoped<IdentityRedirectManager>();
+builder.Services.AddScoped<AuthenticationStateProvider, IdentityRevalidatingAuthenticationStateProvider>();
+
 // Database: EF Core on PostgreSQL, using the "DefaultConnection" string from
 // appsettings.json (points at the local Docker Postgres in development).
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
@@ -17,17 +25,31 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
 
-// ASP.NET Core Identity, storing users/roles in our AppDbContext. This is enough
-// to define the Identity tables in the schema. The SignInManager, authentication
-// middleware, and the register/login UI are wired up in a later Phase 0 commit.
+// Authentication uses Identity's cookie schemes. The application cookie carries the
+// signed-in user; the external cookie is a temporary holder during external (e.g.
+// Google) logins, added later.
+builder.Services.AddAuthentication(options =>
+    {
+        options.DefaultScheme = IdentityConstants.ApplicationScheme;
+        options.DefaultSignInScheme = IdentityConstants.ExternalScheme;
+    })
+    .AddIdentityCookies();
+
+// ASP.NET Core Identity, storing users/roles in our AppDbContext. AddSignInManager
+// is now included so the login page can sign users in.
 builder.Services.AddIdentityCore<ApplicationUser>(options =>
     {
-        // Require a confirmed account before sign-in once email sending exists.
-        options.SignIn.RequireConfirmedAccount = true;
+        // Email confirmation is not wired up until Phase 5. Keeping this false lets a
+        // newly registered user log in immediately; flip it to true once SMTP exists.
+        options.SignIn.RequireConfirmedAccount = false;
     })
     .AddRoles<IdentityRole>()
     .AddEntityFrameworkStores<AppDbContext>()
+    .AddSignInManager()
     .AddDefaultTokenProviders();
+
+// Identity needs an email sender registered; this one is a no-op until Phase 5.
+builder.Services.AddSingleton<IEmailSender<ApplicationUser>, IdentityNoOpEmailSender>();
 
 var app = builder.Build();
 
@@ -42,9 +64,16 @@ if (!app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 app.UseStaticFiles();
+
+app.UseAuthentication();
+app.UseAuthorization();
+
 app.UseAntiforgery();
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
+
+// Maps the account HTTP endpoints (e.g. POST /Account/Logout).
+app.MapAdditionalIdentityEndpoints();
 
 app.Run();

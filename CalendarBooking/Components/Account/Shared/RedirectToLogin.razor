@@ -1,0 +1,14 @@
+@inject NavigationManager NavigationManager
+
+@code {
+    // Rendered by Routes.razor when an unauthenticated user hits a page that
+    // requires authorization. Sends them to the login page and remembers where
+    // they were trying to go so we can return them there after sign-in.
+    protected override void OnInitialized()
+    {
+        var returnUrl = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
+        NavigationManager.NavigateTo(
+            $"Account/Login?returnUrl={Uri.EscapeDataString(returnUrl)}",
+            forceLoad: true);
+    }
+}
