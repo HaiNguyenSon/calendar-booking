@@ -73,6 +73,75 @@ public class AvailabilityService(AppDbContext db)
     }
 
     /// <summary>
+    /// Create a weekly-recurring slot as <paramref name="weeks"/> concrete one-off slots,
+    /// one every 7 days from the first occurrence. Occurrences that would overlap an
+    /// existing slot (or an earlier occurrence in this batch) are skipped rather than
+    /// failing the whole request. Returns failure only if nothing could be created.
+    ///
+    /// Note: the 7-day step is applied in UTC, so an occurrence's local wall-clock time
+    /// can shift by an hour across a daylight-saving boundary. Aligning recurrences to
+    /// local time is a Phase 6 refinement.
+    /// </summary>
+    public async Task<Result> CreateWeeklyAsync(
+        string ownerId, DateTime firstStartUtc, DateTime firstEndUtc, int weeks, SlotType slotType,
+        DateTime nowUtc, CancellationToken ct = default)
+    {
+        if (firstEndUtc <= firstStartUtc)
+        {
+            return Result.Fail("End time must be after the start time.");
+        }
+
+        if (firstStartUtc < nowUtc)
+        {
+            return Result.Fail("A slot cannot start in the past.");
+        }
+
+        if (weeks is < 1 or > 52)
+        {
+            return Result.Fail("Choose between 1 and 52 weeks.");
+        }
+
+        var existing = await db.AvailabilitySlots
+            .Where(s => s.OwnerId == ownerId && s.EndUtc > firstStartUtc)
+            .Select(s => new { s.StartUtc, s.EndUtc })
+            .ToListAsync(ct);
+
+        var toAdd = new List<AvailabilitySlot>();
+        for (var i = 0; i < weeks; i++)
+        {
+            var start = firstStartUtc.AddDays(7 * i);
+            var end = firstEndUtc.AddDays(7 * i);
+
+            var overlapsExisting = existing.Any(e => e.StartUtc < end && start < e.EndUtc);
+            var overlapsBatch = toAdd.Any(s => s.StartUtc < end && start < s.EndUtc);
+            if (overlapsExisting || overlapsBatch)
+            {
+                continue;
+            }
+
+            toAdd.Add(new AvailabilitySlot
+            {
+                Id = Guid.NewGuid(),
+                OwnerId = ownerId,
+                StartUtc = start,
+                EndUtc = end,
+                SlotType = slotType,
+                IsBooked = false,
+                CreatedUtc = nowUtc,
+            });
+        }
+
+        if (toAdd.Count == 0)
+        {
+            return Result.Fail("Every occurrence overlaps a slot you already have.");
+        }
+
+        db.AvailabilitySlots.AddRange(toAdd);
+        await db.SaveChangesAsync(ct);
+        return Result.Success();
+    }
+
+    /// <summary>
     /// Delete one of the owner's slots. Refuses if the slot isn't theirs or is already
     /// booked (a booked slot is deleted only by cancelling the booking — Phase 4).
     /// </summary>

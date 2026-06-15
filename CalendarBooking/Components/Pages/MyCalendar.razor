@@ -50,7 +50,12 @@ else
                                 <option value="@SlotType.ApprovalRequired">Ask my approval first</option>
                             </InputSelect>
                         </div>
-                        <button type="submit" class="btn btn-primary w-100">Add slot</button>
+                        <div class="mb-3">
+                            <label class="form-label" for="weeks">Repeat weekly</label>
+                            <InputNumber id="weeks" class="form-control" @bind-Value="form.Weeks" min="1" max="52" />
+                            <small class="form-text text-muted">1 = a single slot. More creates the same time each week.</small>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">Add slot@(form.Weeks > 1 ? "s" : "")</button>
                     </EditForm>
 
                     <p class="text-muted small mt-3 mb-0">Times are in your timezone (@tzLabel).</p>
@@ -152,7 +157,10 @@ else
         var startUtc = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(form.Start, DateTimeKind.Unspecified), tz);
         var endUtc = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(form.End, DateTimeKind.Unspecified), tz);
 
-        var result = await Availability.CreateOneOffAsync(userId, startUtc, endUtc, form.SlotType, DateTime.UtcNow);
+        var result = form.Weeks <= 1
+            ? await Availability.CreateOneOffAsync(userId, startUtc, endUtc, form.SlotType, DateTime.UtcNow)
+            : await Availability.CreateWeeklyAsync(userId, startUtc, endUtc, form.Weeks, form.SlotType, DateTime.UtcNow);
+
         if (!result.Ok)
         {
             error = result.Error;
@@ -189,5 +197,6 @@ else
         public DateTime Start { get; set; }
         public DateTime End { get; set; }
         public SlotType SlotType { get; set; } = SlotType.Instant;
+        public int Weeks { get; set; } = 1;
     }
 }
