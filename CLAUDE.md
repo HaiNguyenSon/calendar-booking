@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A multi-user booking calendar: every user has a calendar, opens availability slots on their own, and books slots on others'. Browsing is public; any action (book, approve, decline, cancel) requires login. Users are symmetric — everyone can both offer and book.
+A multi-user booking calendar: every user has a calendar, opens availability slots on their own, and books slots on others'. Browsing is public; any action (book, approve, decline, cancel) requires login. Users are symmetric — everyone can both offer and book. On top of the core loop the app also has: in-app + email notifications, user-to-user subscriptions, optional external calendar sync (Google live, Microsoft scaffolded), and profiles.
 
-**[`BOOKING-PLAN.md`](BOOKING-PLAN.md) is the source of truth for product design and the phased roadmap.** Read it before adding features — it defines the entity model, the booking/approval/cancellation rules, the pending-request cap, contention handling, and the security-critical concurrency and account-linking guarantees. Phase 0 (data + auth foundation) is complete; Phase 1 (calendar & availability) is next.
+**[`BOOKING-PLAN.md`](BOOKING-PLAN.md) is the source of truth for product design.** It defines the entity model and the security-critical concurrency and account-linking guarantees. All of its phases (0–7) are now implemented; the parts that need real third-party credentials (SMTP, Google/Microsoft calendar sync, Apple login) are config-gated and build green but are **untested against the live services** — see the honesty notes below.
 
 ## Commands
 
@@ -25,47 +25,51 @@ dotnet ef migrations remove --project CalendarBooking
 ```
 
 ```bash
-# Tests (xUnit, EF in-memory provider — no database needed)
+# Tests (xUnit)
 dotnet test
 dotnet test --filter "FullyQualifiedName~BookingServiceTests"   # one class
 ```
 
-Domain logic lives in `Services/` precisely so it can be unit-tested without a database; `tests/CalendarBooking.Tests` covers the rules there with the EF in-memory provider. The database-level double-booking guard (the partial unique index, which the in-memory provider ignores) is covered separately by **Postgres-backed integration tests** using Testcontainers (`DoubleBookingIntegrationTests`) — these need Docker running. The interactive Razor UI is verified by running the app.
-
-Service map:
-- `AvailabilityService` / `BookingService` / `ApprovalService` / `CancellationService` — the booking loop (define slots, book/request, approve/contention/on-behalf-of, cancel).
-- `NotificationService` + `NotificationBroadcaster` — in-app notifications. `Queue` adds a row to the caller's DbContext (atomic with the action); `PushQueued` (called after SaveChanges) fires the broadcaster so a recipient's open page refreshes live over their Blazor circuit.
-- Background workers (`BackgroundService`, registered `AddHostedService`): `EmailDispatcherService` (emails notifications out-of-band via `IAppEmailSender` — currently a logging stub), `ReminderService` (booking-starts-soon), `StaleRequestService` (expire pending requests whose slot passed).
-- `AccountCleanupService` — closes an account by anonymizing it (FKs are Restrict; history is kept), tidying future slots/bookings/requests first.
-- `CalendarSyncService` + `IExternalCalendarClient` — Phase 7 external-sync seam, **inert until a provider is implemented**. See `docs/EXTERNAL-SYNC.md`.
-
-Google login is optional and off unless credentials are set via user-secrets (`Authentication:Google:ClientId` / `ClientSecret`) — see the README. The app runs fine without them.
+Most tests use the EF **in-memory** provider and need no database. Two suites need **Docker**: `DoubleBookingIntegrationTests` (real Postgres via Testcontainers — verifies the partial unique index the in-memory provider can't) and `AntiforgeryTests` (boots the app via `WebApplicationFactory<Program>`; `Program` is `public partial` so the test host can reference it). The interactive Razor UI is verified by running the app.
 
 ## Architecture
 
-.NET 8 **Blazor Web App**, single project, EF Core on PostgreSQL, ASP.NET Core Identity. Three layers inside `CalendarBooking/`: `Domain/` (entities + enums), `Data/` (`AppDbContext` + migrations), `Components/` (Razor UI).
+.NET 8 **Blazor Web App**, single project, EF Core on PostgreSQL, ASP.NET Core Identity. Layers inside `CalendarBooking/`: `Domain/` (entities + enums), `Data/` (`AppDbContext` + migrations), `Services/` (domain logic), `Components/` (Razor UI).
+
+### Domain logic is in `Services/`, not components
+Business rules live in plain service classes so they're unit-testable without a DB; the Razor UI is a thin layer over them. Each returns a small `Result` record (Ok + error/payload). Map:
+- `AvailabilityService` — define/delete slots (one-off + weekly recurrence via `CreateManyAsync`); blocks slot creation that clashes with the owner's external busy times.
+- `BookingService` — public browse, instant book (confirmed), approval request (pending cap from `BookingOptions`).
+- `ApprovalService` — approve (auto-declines competing requests as `Superseded`), decline, on-behalf-of (relationship-gated).
+- `CancellationService` — cancel by either party (reason required), free slot, keep the row; also the "my schedule" query.
+- `SubscriptionService` — follow users by their `PublicId`; new-subscriber login digest (`SubscribersSeenUtc` high-water mark; no push/email by design).
+- `NotificationService` + `NotificationBroadcaster` — in-app notifications. `Queue` adds a row to the caller's DbContext (atomic with the action); `PushQueued` (after SaveChanges) fires the broadcaster so a recipient's open page refreshes live over their Blazor circuit.
+- Background workers (`AddHostedService`): `EmailDispatcherService` (emails notifications out-of-band via `IAppEmailSender`), `ReminderService` (booking-starts-soon), `StaleRequestService` (expire pending requests whose slot passed), `CalendarSyncDispatcher` (push confirmed bookings to external calendars + delete on cancel).
+- `AccountCleanupService` — closes an account by anonymizing it (FKs are Restrict; history is kept), tidying future slots/bookings/requests/subscriptions first.
+- External sync: `CalendarSyncService` fans out to registered `IExternalCalendarClient`s. `GoogleCalendarClient` (via Google.Apis) and `MicrosoftCalendarClient` (Graph over HTTP) are registered only when configured; refresh tokens are stored encrypted (Data Protection). See `docs/EXTERNAL-SYNC.md`.
 
 ### Interactivity is PER-PAGE, not global (critical)
-Despite `BOOKING-PLAN.md` saying "Global", the app uses **per-page interactivity**. `App.razor` does NOT put a render mode on `<Routes>`/`<HeadOutlet>`; pages opt in individually with `@rendermode InteractiveServer` (see `Counter.razor`, `Account/Shared/NicknameField.razor`).
-
-**Why it must stay this way:** signing a user in writes the auth cookie to the HTTP response, which only works during static server-side rendering — not over the interactive SignalR circuit. So all `Account/` pages render statically. When you need interactivity on an otherwise-static page (e.g. live validation), add a small interactive **island** component rather than making the page interactive (`NicknameField.razor` is the pattern).
+`App.razor` does NOT put a render mode on `<Routes>`/`<HeadOutlet>`; pages opt in with `@rendermode InteractiveServer`. **Why:** signing in writes the auth cookie to the HTTP response, which only works during static SSR — not over the interactive SignalR circuit. So all `Account/` pages render statically. For interactivity on an otherwise-static page, add a small interactive **island** (`NicknameField.razor`, `NotificationBadge.razor`) rather than making the page interactive. Interactive pages load data + do JS interop (browser timezone) in `OnAfterRenderAsync`, not `OnInitializedAsync`, so they don't query the scoped DbContext during prerender.
 
 ### Authentication
-- `Program.cs` wires Identity cookie schemes + `AddIdentityCore<ApplicationUser>().AddSignInManager()`. `RequireConfirmedAccount` is **false** (no email yet; flip to true when SMTP lands in Phase 5 — a no-op `IEmailSender` is the placeholder).
-- Account UI/infra lives in `Components/Account/`. `IdentityRedirectManager` does safe redirects from static pages; `IdentityRevalidatingAuthenticationStateProvider` supplies the cascading auth state. Logout and external-login start are HTTP endpoints mapped by `MapAdditionalIdentityEndpoints` (sign-out must be a real POST to clear the cookie).
-- **External login account-linking is security-critical** (`ExternalLogin.razor`): auto-link a Google login to an existing local account ONLY when the provider reports the email as verified. Never link by email alone. New external users are prompted for a nickname before any action.
+- `Program.cs` wires Identity cookie schemes + `AddIdentityCore<ApplicationUser>().AddSignInManager()`. `RequireConfirmedAccount` is **config-driven** (`Identity:RequireConfirmedAccount`, default false so dev works without SMTP); when true, registration sends a confirmation link and `Account/ConfirmEmail` validates it.
+- Email goes through `IAppEmailSender` — real SMTP (`Email:Smtp:*`, MailKit) when configured, else a logging fallback. The notification email dispatcher and Identity confirmation/reset both use it.
+- Registration is **enumeration-safe**: an already-registered email shows the same "check your email" page rather than revealing it exists.
+- External login: **Google** (live) and **Apple** (scaffold) are config-gated. **Account-linking is security-critical** (`ExternalLogin.razor`): auto-link to an existing local account ONLY when the provider reports the email verified (Apple is always-verified). New external users pick a nickname; first/last name are pulled from the provider profile.
+- Logout / external-login start / calendar-connect are HTTP endpoints (sign-out must be a real POST). Antiforgery is enforced on form-POST endpoints (`AntiforgeryTests`).
 
 ### Route protection
-Public by default — there is no global authorization policy. Protect a page by adding `@attribute [Authorize]`; `AuthorizeRouteView` in `Routes.razor` then redirects anonymous users to login via `RedirectToLogin`. `MyCalendar.razor` (`/my`) is the example.
+Public by default — no global authorization policy. Protect a page with `@attribute [Authorize]`; `AuthorizeRouteView` in `Routes.razor` redirects anonymous users to login via `RedirectToLogin`. Protected: `/my`, `/notifications`, `/Account/Profile`, `/Account/Close`.
 
 ### Data model invariants (enforced in `AppDbContext.OnModelCreating`)
-- **Double-booking guard:** a *partial* unique index on `Booking.SlotId` filtered to confirmed bookings (`"Status" = 0`). This is the database-level guarantee against double-booking — rely on it + a transaction when claiming a slot, never an app-level "is it free?" check. It is filtered so a cancelled booking (kept for history) doesn't block re-booking.
-- **UTC everywhere:** store all timestamps in UTC, convert to local only at display.
-- **Cancelled bookings are kept, not deleted** (`BookingStatus.Cancelled`) — preserves relationship history (the on-behalf-of feature depends on it) and audit trail.
-- **`Booking` references users three+ ways:** `OwnerId` (host), `AttendeeId` (whose calendar it shows on), `CreatedById` (self-booked vs owner-initiated), plus `CancelledById`. All user FKs are `DeleteBehavior.Restrict` — user deletion is handled explicitly in a service (Phase 6), never cascaded.
-- **Nickname** is the public identity (email is private), unique via a DB index; uniqueness checks in code are case-insensitive (`LOWER`), with citext/`LOWER()` hardening deferred to Phase 6.
+- **Double-booking guard:** a *partial* unique index on `Booking.SlotId` filtered to confirmed bookings (`"Status" = 0`). This is THE database-level guarantee — a claim is one atomic `SaveChanges`; on `DbUpdateException` report "just taken". Never an app-level "is it free?" check. Filtered so a cancelled (kept) booking doesn't block re-booking.
+- **UTC everywhere:** store timestamps in UTC, convert to local only at display (browser timezone via `wwwroot/js/timezone.js` → `TimeZoneInfo`).
+- **Cancelled bookings are kept, not deleted** — preserves relationship history (the on-behalf-of relationship gate depends on it) and audit.
+- **`Booking` references users 4 ways** (`OwnerId`, `AttendeeId`, `CreatedById`, `CancelledById`), all `DeleteBehavior.Restrict` — user deletion is anonymization in `AccountCleanupService`, never cascaded.
+- **Nickname** is the public identity, unique **case-insensitively** via a `LOWER(Nickname)` functional index created with raw SQL in a migration (EF can't model it — so there's intentionally no `HasIndex` for it). **`PublicId`** is a stable opaque 10-char code (`PublicCode`), unique, used for subscribing.
 
 ## Conventions
-- **Mobile-first UI/UX.** Smartphones and tablets are the primary target — every page must be usable and look good on small touch screens first, then scale up to desktop. Use responsive layouts (Bootstrap's grid/breakpoints are already available), touch-friendly tap targets, and avoid designs that only work at desktop widths. Verify at narrow viewports, not just full-screen.
-- Commit per logical unit with a body that explains the *why* in plain terms (a junior dev should understand it); verify the build is green before committing.
-- Match the existing comment density in `.razor`/`.cs` files — these are documented for newcomers.
+- **Mobile-first UI/UX.** Phones/tablets are the primary target — usable on small touch screens first, then scale up. Use Bootstrap's responsive grid; verify at narrow viewports.
+- Commit per logical unit with a body explaining the *why* in plain terms; verify the build is green (and tests, if logic changed) before committing.
+- Match the existing comment density in `.razor`/`.cs` files — they're documented for newcomers.
+- When a feature needs third-party credentials, keep it **config-gated** (off/inert without config) so the app always builds and runs; flag clearly what hasn't been tested live.
