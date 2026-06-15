@@ -5,6 +5,7 @@
 @using CalendarBooking.Domain
 @using CalendarBooking.Services
 @inject AvailabilityService Availability
+@inject ApprovalService Approvals
 @inject IJSRuntime JS
 
 @* PROTECTED + INTERACTIVE. [Authorize] gates it: anonymous users are redirected to login
@@ -96,6 +97,68 @@ else
             }
         </div>
     </div>
+
+    <hr class="my-4" />
+
+    <div class="row g-4">
+        <div class="col-12 col-lg-7">
+            <h2 class="h5">Incoming requests</h2>
+            @if (requests.Count == 0)
+            {
+                <p class="text-muted">No one is waiting on your approval.</p>
+            }
+            else
+            {
+                <ul class="list-group">
+                    @foreach (var req in requests)
+                    {
+                        <li class="list-group-item d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <div>
+                                <div class="fw-semibold">@FormatRange(req.StartUtc, req.EndUtc)</div>
+                                <span class="text-muted small">from @req.RequesterNickname</span>
+                            </div>
+                            <div class="btn-group">
+                                <button class="btn btn-success btn-sm" @onclick="() => ApproveAsync(req.RequestId)">Approve</button>
+                                <button class="btn btn-outline-secondary btn-sm" @onclick="() => DeclineAsync(req.RequestId)">Decline</button>
+                            </div>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+
+        <div class="col-12 col-lg-5">
+            <div class="card">
+                <div class="card-body">
+                    <h2 class="h5 card-title">Book for a client</h2>
+                    <p class="text-muted small">Confirm one of your open slots for someone you've booked with before.</p>
+                    @{ var openSlots = slots.Where(s => !s.IsBooked).ToList(); }
+                    @if (openSlots.Count == 0)
+                    {
+                        <p class="text-muted mb-0">You have no open slots to assign.</p>
+                    }
+                    else
+                    {
+                        <div class="mb-3">
+                            <label class="form-label" for="obo-slot">Slot</label>
+                            <select id="obo-slot" class="form-select" @bind="onBehalfSlotId">
+                                <option value="">Choose a slot…</option>
+                                @foreach (var slot in openSlots)
+                                {
+                                    <option value="@slot.Id">@FormatRange(slot.StartUtc, slot.EndUtc)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="obo-client">Client nickname</label>
+                            <input id="obo-client" class="form-control" @bind="onBehalfClient" placeholder="their nickname" />
+                        </div>
+                        <button class="btn btn-primary w-100" @onclick="BookOnBehalfAsync">Book for them</button>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
 }
 
 @code {
@@ -107,8 +170,13 @@ else
     private TimeZoneInfo tz = TimeZoneInfo.Utc;
     private string tzLabel = "UTC";
     private List<AvailabilitySlot> slots = new();
+    private List<IncomingRequest> requests = new();
     private string? error;
     private readonly SlotForm form = new();
+
+    // "Book for a client" form state.
+    private string? onBehalfSlotId;
+    private string? onBehalfClient;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -147,6 +215,45 @@ else
     private async Task LoadAsync()
     {
         slots = (await Availability.GetUpcomingOwnedSlotsAsync(userId, DateTime.UtcNow)).ToList();
+        requests = (await Approvals.GetIncomingRequestsAsync(userId, DateTime.UtcNow)).ToList();
+    }
+
+    private async Task ApproveAsync(Guid requestId)
+    {
+        error = null;
+        var result = await Approvals.ApproveAsync(requestId, userId, DateTime.UtcNow);
+        if (!result.Ok) { error = result.Error; }
+        await LoadAsync();
+    }
+
+    private async Task DeclineAsync(Guid requestId)
+    {
+        error = null;
+        var result = await Approvals.DeclineAsync(requestId, userId);
+        if (!result.Ok) { error = result.Error; }
+        await LoadAsync();
+    }
+
+    private async Task BookOnBehalfAsync()
+    {
+        error = null;
+        if (!Guid.TryParse(onBehalfSlotId, out var slotId))
+        {
+            error = "Choose a slot first.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(onBehalfClient))
+        {
+            error = "Enter the client's nickname.";
+            return;
+        }
+
+        var result = await Approvals.BookOnBehalfAsync(userId, slotId, onBehalfClient, DateTime.UtcNow);
+        if (!result.Ok) { error = result.Error; return; }
+
+        onBehalfSlotId = null;
+        onBehalfClient = null;
+        await LoadAsync();
     }
 
     private async Task AddSlotAsync()
