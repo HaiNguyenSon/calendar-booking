@@ -53,5 +53,6 @@ Public by default — there is no global authorization policy. Protect a page by
 - **Nickname** is the public identity (email is private), unique via a DB index; uniqueness checks in code are case-insensitive (`LOWER`), with citext/`LOWER()` hardening deferred to Phase 6.
 
 ## Conventions
+- **Mobile-first UI/UX.** Smartphones and tablets are the primary target — every page must be usable and look good on small touch screens first, then scale up to desktop. Use responsive layouts (Bootstrap's grid/breakpoints are already available), touch-friendly tap targets, and avoid designs that only work at desktop widths. Verify at narrow viewports, not just full-screen.
 - Commit per logical unit with a body that explains the *why* in plain terms (a junior dev should understand it); verify the build is green before committing.
 - Match the existing comment density in `.razor`/`.cs` files — these are documented for newcomers.
