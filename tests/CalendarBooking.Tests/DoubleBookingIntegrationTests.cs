@@ -14,9 +14,7 @@ namespace CalendarBooking.Tests;
 /// </summary>
 public sealed class PostgresFixture : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer container = new PostgreSqlBuilder()
-        .WithImage("postgres:16")
-        .Build();
+    private readonly PostgreSqlContainer container = new PostgreSqlBuilder("postgres:16").Build();
 
     public string ConnectionString => container.GetConnectionString();
 
