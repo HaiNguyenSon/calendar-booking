@@ -1,6 +1,11 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
+# 
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CalendarBooking", "CalendarBooking\CalendarBooking.csproj", "{FDC7C4DB-518D-4B5F-BAEF-E3E7383FB8C0}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{A60DB067-E171-4041-92A2-3A0FAC312C96}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CalendarBooking.Tests", "tests\CalendarBooking.Tests\CalendarBooking.Tests.csproj", "{B4A1D69C-D9F9-4858-8755-64330995C0D0}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -12,5 +17,12 @@ Global
 		{FDC7C4DB-518D-4B5F-BAEF-E3E7383FB8C0}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{FDC7C4DB-518D-4B5F-BAEF-E3E7383FB8C0}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{FDC7C4DB-518D-4B5F-BAEF-E3E7383FB8C0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B4A1D69C-D9F9-4858-8755-64330995C0D0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B4A1D69C-D9F9-4858-8755-64330995C0D0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B4A1D69C-D9F9-4858-8755-64330995C0D0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B4A1D69C-D9F9-4858-8755-64330995C0D0}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{B4A1D69C-D9F9-4858-8755-64330995C0D0} = {A60DB067-E171-4041-92A2-3A0FAC312C96}
 	EndGlobalSection
 EndGlobal

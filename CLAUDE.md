@@ -24,7 +24,13 @@ dotnet ef migrations add <Name> --project CalendarBooking --output-dir Data/Migr
 dotnet ef migrations remove --project CalendarBooking
 ```
 
-There is no test project yet. Manual verification is done by running the app and driving HTTP flows.
+```bash
+# Tests (xUnit, EF in-memory provider — no database needed)
+dotnet test
+dotnet test --filter "FullyQualifiedName~BookingServiceTests"   # one class
+```
+
+Domain logic lives in `Services/` (AvailabilityService, BookingService, ApprovalService, CancellationService) precisely so it can be unit-tested without a database; `tests/CalendarBooking.Tests` covers the booking rules there. The interactive Razor UI is verified by running the app. Note: the in-memory provider ignores the partial unique index and transactions, so the database-level double-booking guard is a Postgres-only guarantee, not covered by unit tests.
 
 Google login is optional and off unless credentials are set via user-secrets (`Authentication:Google:ClientId` / `ClientSecret`) — see the README. The app runs fine without them.
 
