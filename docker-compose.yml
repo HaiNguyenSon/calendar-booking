@@ -1,0 +1,29 @@
+# Local development database.
+# Start it with:   docker compose up -d
+# Stop it with:    docker compose down       (data is kept)
+# Wipe it with:    docker compose down -v    (deletes the volume)
+#
+# These credentials are for LOCAL DEVELOPMENT ONLY. Production uses real
+# secrets supplied through environment variables / a secrets manager.
+services:
+  db:
+    image: postgres:16
+    container_name: calendarbooking-db
+    environment:
+      POSTGRES_DB: calendarbooking
+      POSTGRES_USER: calendarbooking
+      POSTGRES_PASSWORD: localdevpassword
+    ports:
+      # host:container — connect from the app at localhost:5432
+      - "5432:5432"
+    volumes:
+      # named volume so data survives container restarts
+      - calendarbooking-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U calendarbooking -d calendarbooking"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  calendarbooking-pgdata:
