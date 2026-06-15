@@ -1,6 +1,8 @@
 using CalendarBooking.Data;
 using CalendarBooking.Domain;
+using CalendarBooking.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace CalendarBooking.Tests;
 
@@ -16,6 +18,22 @@ internal static class TestDb
 {
     /// <summary>A fixed "now" so time-based rules are deterministic.</summary>
     public static readonly DateTime Now = new(2030, 1, 1, 12, 0, 0, DateTimeKind.Utc);
+
+    /// <summary>A CalendarSyncService with no external providers (HasProviders == false).</summary>
+    public static CalendarSyncService NoSync() =>
+        new(Array.Empty<IExternalCalendarClient>(), NullLogger<CalendarSyncService>.Instance);
+
+    /// <summary>A CalendarSyncService whose single provider reports the given busy intervals.</summary>
+    public static CalendarSyncService SyncWithBusy(params BusyInterval[] busy) =>
+        new(new IExternalCalendarClient[] { new StubBusyClient(busy) }, NullLogger<CalendarSyncService>.Instance);
+
+    private sealed class StubBusyClient(IReadOnlyList<BusyInterval> busy) : IExternalCalendarClient
+    {
+        public string Provider => "Stub";
+        public Task PushBookingAsync(string userId, Booking booking, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<IReadOnlyList<BusyInterval>> GetBusyIntervalsAsync(
+            string userId, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default) => Task.FromResult(busy);
+    }
 
     public static AppDbContext NewContext()
     {

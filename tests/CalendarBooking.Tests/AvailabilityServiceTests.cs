@@ -13,7 +13,7 @@ public class AvailabilityServiceTests
     {
         using var db = TestDb.NewContext();
         var alice = TestDb.AddUser(db, "alice");
-        var svc = new AvailabilityService(db);
+        var svc = new AvailabilityService(db, TestDb.NoSync());
 
         var result = await svc.CreateOneOffAsync(alice.Id, Now.AddHours(1), Now.AddHours(2), SlotType.Instant, Now);
 
@@ -26,7 +26,7 @@ public class AvailabilityServiceTests
     {
         using var db = TestDb.NewContext();
         var alice = TestDb.AddUser(db, "alice");
-        var svc = new AvailabilityService(db);
+        var svc = new AvailabilityService(db, TestDb.NoSync());
 
         var result = await svc.CreateOneOffAsync(alice.Id, Now.AddHours(2), Now.AddHours(1), SlotType.Instant, Now);
 
@@ -39,7 +39,7 @@ public class AvailabilityServiceTests
     {
         using var db = TestDb.NewContext();
         var alice = TestDb.AddUser(db, "alice");
-        var svc = new AvailabilityService(db);
+        var svc = new AvailabilityService(db, TestDb.NoSync());
 
         var result = await svc.CreateOneOffAsync(alice.Id, Now.AddHours(-2), Now.AddHours(-1), SlotType.Instant, Now);
 
@@ -52,7 +52,7 @@ public class AvailabilityServiceTests
         using var db = TestDb.NewContext();
         var alice = TestDb.AddUser(db, "alice");
         TestDb.AddSlot(db, alice.Id, Now.AddHours(1), Now.AddHours(3));
-        var svc = new AvailabilityService(db);
+        var svc = new AvailabilityService(db, TestDb.NoSync());
 
         var result = await svc.CreateOneOffAsync(alice.Id, Now.AddHours(2), Now.AddHours(4), SlotType.Instant, Now);
 
@@ -61,11 +61,36 @@ public class AvailabilityServiceTests
     }
 
     [Fact]
+    public async Task CreateOneOff_is_blocked_when_the_owner_is_busy_on_their_external_calendar()
+    {
+        using var db = TestDb.NewContext();
+        var alice = TestDb.AddUser(db, "alice");
+        var svc = new AvailabilityService(db, TestDb.SyncWithBusy(new BusyInterval(Now.AddHours(1), Now.AddHours(3))));
+
+        var result = await svc.CreateOneOffAsync(alice.Id, Now.AddHours(2), Now.AddHours(4), SlotType.Instant, Now);
+
+        Assert.False(result.Ok);
+        Assert.Equal(0, await db.AvailabilitySlots.CountAsync());
+    }
+
+    [Fact]
+    public async Task CreateOneOff_is_allowed_when_external_busy_time_does_not_overlap()
+    {
+        using var db = TestDb.NewContext();
+        var alice = TestDb.AddUser(db, "alice");
+        var svc = new AvailabilityService(db, TestDb.SyncWithBusy(new BusyInterval(Now.AddHours(5), Now.AddHours(6))));
+
+        var result = await svc.CreateOneOffAsync(alice.Id, Now.AddHours(1), Now.AddHours(2), SlotType.Instant, Now);
+
+        Assert.True(result.Ok);
+    }
+
+    [Fact]
     public async Task CreateWeekly_creates_one_slot_per_week()
     {
         using var db = TestDb.NewContext();
         var alice = TestDb.AddUser(db, "alice");
-        var svc = new AvailabilityService(db);
+        var svc = new AvailabilityService(db, TestDb.NoSync());
 
         var result = await svc.CreateWeeklyAsync(alice.Id, Now.AddHours(1), Now.AddHours(2), 4, SlotType.Instant, Now);
 
@@ -80,7 +105,7 @@ public class AvailabilityServiceTests
         var alice = TestDb.AddUser(db, "alice");
         // An existing slot exactly where the 2nd weekly occurrence would land.
         TestDb.AddSlot(db, alice.Id, Now.AddHours(1).AddDays(7), Now.AddHours(2).AddDays(7));
-        var svc = new AvailabilityService(db);
+        var svc = new AvailabilityService(db, TestDb.NoSync());
 
         var result = await svc.CreateWeeklyAsync(alice.Id, Now.AddHours(1), Now.AddHours(2), 3, SlotType.Instant, Now);
 
@@ -96,7 +121,7 @@ public class AvailabilityServiceTests
     {
         using var db = TestDb.NewContext();
         var alice = TestDb.AddUser(db, "alice");
-        var svc = new AvailabilityService(db);
+        var svc = new AvailabilityService(db, TestDb.NoSync());
 
         var result = await svc.CreateWeeklyAsync(alice.Id, Now.AddHours(1), Now.AddHours(2), weeks, SlotType.Instant, Now);
 
@@ -109,7 +134,7 @@ public class AvailabilityServiceTests
         using var db = TestDb.NewContext();
         var alice = TestDb.AddUser(db, "alice");
         TestDb.AddSlot(db, alice.Id, Now.AddHours(1).AddDays(7), Now.AddHours(2).AddDays(7)); // blocks occurrence 2
-        var svc = new AvailabilityService(db);
+        var svc = new AvailabilityService(db, TestDb.NoSync());
         var occurrences = new List<(DateTime StartUtc, DateTime EndUtc)>
         {
             (Now.AddHours(1), Now.AddHours(2)),
@@ -130,7 +155,7 @@ public class AvailabilityServiceTests
         using var db = TestDb.NewContext();
         var alice = TestDb.AddUser(db, "alice");
         var slot = TestDb.AddSlot(db, alice.Id, Now.AddHours(1), Now.AddHours(2));
-        var svc = new AvailabilityService(db);
+        var svc = new AvailabilityService(db, TestDb.NoSync());
 
         var result = await svc.DeleteAsync(alice.Id, slot.Id);
 
@@ -144,7 +169,7 @@ public class AvailabilityServiceTests
         using var db = TestDb.NewContext();
         var alice = TestDb.AddUser(db, "alice");
         var slot = TestDb.AddSlot(db, alice.Id, Now.AddHours(1), Now.AddHours(2), booked: true);
-        var svc = new AvailabilityService(db);
+        var svc = new AvailabilityService(db, TestDb.NoSync());
 
         var result = await svc.DeleteAsync(alice.Id, slot.Id);
 
@@ -159,7 +184,7 @@ public class AvailabilityServiceTests
         var alice = TestDb.AddUser(db, "alice");
         var bob = TestDb.AddUser(db, "bob");
         var slot = TestDb.AddSlot(db, alice.Id, Now.AddHours(1), Now.AddHours(2));
-        var svc = new AvailabilityService(db);
+        var svc = new AvailabilityService(db, TestDb.NoSync());
 
         var result = await svc.DeleteAsync(bob.Id, slot.Id);
 
@@ -177,7 +202,7 @@ public class AvailabilityServiceTests
         TestDb.AddSlot(db, alice.Id, Now.AddHours(1), Now.AddHours(2));   // future, earlier
         TestDb.AddSlot(db, alice.Id, Now.AddHours(-2), Now.AddHours(-1)); // past
         TestDb.AddSlot(db, bob.Id, Now.AddHours(1), Now.AddHours(2));     // other owner
-        var svc = new AvailabilityService(db);
+        var svc = new AvailabilityService(db, TestDb.NoSync());
 
         var slots = await svc.GetUpcomingOwnedSlotsAsync(alice.Id, Now);
 

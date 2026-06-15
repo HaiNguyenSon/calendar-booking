@@ -8,8 +8,12 @@ namespace CalendarBooking.Services;
 /// Owner-side availability operations: list, create and delete a user's own slots.
 /// Every method takes the acting user's id and enforces that they only touch their own
 /// slots. All times are UTC — callers convert to/from the user's local time at the edge.
+///
+/// When the owner has a connected external calendar, creating a slot is blocked if it
+/// clashes with their external busy time (the "pull" half of sync). With no provider
+/// connected, <see cref="CalendarSyncService"/> returns no busy times, so this is inert.
 /// </summary>
-public class AvailabilityService(AppDbContext db)
+public class AvailabilityService(AppDbContext db, CalendarSyncService calendarSync)
 {
     /// <summary>A failure carries a user-facing reason; success may carry the new slot.</summary>
     public readonly record struct Result(bool Ok, string? Error, AvailabilitySlot? Slot = null)
@@ -54,6 +58,15 @@ public class AvailabilityService(AppDbContext db)
         if (overlaps)
         {
             return Result.Fail("This overlaps a slot you already have.");
+        }
+
+        if (calendarSync.HasProviders)
+        {
+            var busy = await calendarSync.GetBusyIntervalsAsync(ownerId, startUtc, endUtc, ct);
+            if (busy.Any(b => b.StartUtc < endUtc && startUtc < b.EndUtc))
+            {
+                return Result.Fail("Your connected calendar shows you as busy then.");
+            }
         }
 
         var slot = new AvailabilitySlot
@@ -129,17 +142,24 @@ public class AvailabilityService(AppDbContext db)
         }
 
         var earliest = occurrences.Min(o => o.StartUtc);
+        var latest = occurrences.Max(o => o.EndUtc);
         var existing = await db.AvailabilitySlots
             .Where(s => s.OwnerId == ownerId && s.EndUtc > earliest)
             .Select(s => new { s.StartUtc, s.EndUtc })
             .ToListAsync(ct);
+
+        // Owner's external busy times across the whole series (one call), if connected.
+        var busy = calendarSync.HasProviders
+            ? await calendarSync.GetBusyIntervalsAsync(ownerId, earliest, latest, ct)
+            : Array.Empty<BusyInterval>();
 
         var toAdd = new List<AvailabilitySlot>();
         foreach (var o in occurrences)
         {
             var overlapsExisting = existing.Any(e => e.StartUtc < o.EndUtc && o.StartUtc < e.EndUtc);
             var overlapsBatch = toAdd.Any(s => s.StartUtc < o.EndUtc && o.StartUtc < s.EndUtc);
-            if (overlapsExisting || overlapsBatch)
+            var overlapsBusy = busy.Any(b => b.StartUtc < o.EndUtc && o.StartUtc < b.EndUtc);
+            if (overlapsExisting || overlapsBatch || overlapsBusy)
             {
                 continue;
             }
