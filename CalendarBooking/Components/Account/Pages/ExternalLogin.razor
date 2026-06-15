@@ -115,11 +115,14 @@
         // 2) Not linked yet. SECURITY-CRITICAL: auto-link to an existing local account
         // ONLY when the provider reports the email as verified. Linking by email alone
         // would let someone with an unverified external email hijack an account. One
-        // account per person across email/Google/(Apple later).
+        // account per person across email/Google/Apple.
         var email = externalLoginInfo.Principal.FindFirstValue(ClaimTypes.Email);
-        var emailVerified = string.Equals(
-            externalLoginInfo.Principal.FindFirstValue("email_verified"),
-            "true", StringComparison.OrdinalIgnoreCase);
+        var emailVerified =
+            // Apple only returns verified emails, so it counts as verified.
+            externalLoginInfo.LoginProvider == "Apple"
+            || string.Equals(
+                externalLoginInfo.Principal.FindFirstValue("email_verified"),
+                "true", StringComparison.OrdinalIgnoreCase);
 
         if (!string.IsNullOrEmpty(email) && emailVerified)
         {

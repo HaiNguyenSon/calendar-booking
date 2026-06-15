@@ -65,6 +65,26 @@ if (!string.IsNullOrEmpty(googleClientId) && !string.IsNullOrEmpty(googleClientS
     });
 }
 
+// Apple login, enabled only when configured. Needs an Apple Developer account: a Services ID
+// (ClientId), a Sign in with Apple key (KeyId + the AuthKey_<KeyId>.p8 file at the content
+// root), and the TeamId. Apple always reports the email as verified.
+var appleClientId = builder.Configuration["Authentication:Apple:ClientId"];
+var appleKeyId = builder.Configuration["Authentication:Apple:KeyId"];
+var appleTeamId = builder.Configuration["Authentication:Apple:TeamId"];
+if (!string.IsNullOrEmpty(appleClientId) && !string.IsNullOrEmpty(appleKeyId) && !string.IsNullOrEmpty(appleTeamId))
+{
+    authenticationBuilder.AddApple(options =>
+    {
+        options.ClientId = appleClientId;
+        options.KeyId = appleKeyId;
+        options.TeamId = appleTeamId;
+        options.SignInScheme = IdentityConstants.ExternalScheme;
+        options.GenerateClientSecret = true;
+        options.UsePrivateKey(keyId =>
+            builder.Environment.ContentRootFileProvider.GetFileInfo($"AuthKey_{keyId}.p8"));
+    });
+}
+
 authenticationBuilder.AddIdentityCookies();
 
 // ASP.NET Core Identity, storing users/roles in our AppDbContext. AddSignInManager
