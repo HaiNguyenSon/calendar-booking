@@ -1,0 +1,154 @@
+@page "/u/{Nickname}"
+@rendermode InteractiveServer
+@using System.Security.Claims
+@using CalendarBooking.Domain
+@using CalendarBooking.Services
+@inject BookingService Booking
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+@* PUBLIC view of one user's open slots. Booking is an action that requires sign-in: the
+   Book button redirects anonymous visitors to login (remembering this page), then books. *@
+
+<PageTitle>@Nickname</PageTitle>
+
+@if (owner is null && loaded)
+{
+    <h1>Not found</h1>
+    <p class="text-muted">No user with the nickname &ldquo;@Nickname&rdquo;.</p>
+}
+else
+{
+    <h1>@Nickname</h1>
+    @if (owner?.Description is { Length: > 0 } bio)
+    {
+        <p class="text-muted">@bio</p>
+    }
+
+    @if (message is not null)
+    {
+        <div class="alert alert-success" role="alert">@message</div>
+    }
+    @if (error is not null)
+    {
+        <div class="alert alert-danger" role="alert">@error</div>
+    }
+
+    @if (!loaded)
+    {
+        <p><em>Loading…</em></p>
+    }
+    else if (slots.Count == 0)
+    {
+        <p class="text-muted">No open slots right now.</p>
+    }
+    else
+    {
+        <ul class="list-group" style="max-width: 38rem;">
+            @foreach (var slot in slots)
+            {
+                <li class="list-group-item d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <div>
+                        <div class="fw-semibold">@FormatRange(slot.StartUtc, slot.EndUtc)</div>
+                        <span class="badge @(slot.SlotType == SlotType.Instant ? "bg-success" : "bg-warning text-dark")">
+                            @(slot.SlotType == SlotType.Instant ? "Instant" : "Approval")
+                        </span>
+                    </div>
+                    <button class="btn btn-primary btn-sm" @onclick="() => BookAsync(slot)">
+                        @(slot.SlotType == SlotType.Instant ? "Book" : "Request")
+                    </button>
+                </li>
+            }
+        </ul>
+        <p class="text-muted small mt-2">Times in your timezone (@tzLabel).</p>
+    }
+}
+
+@code {
+    [Parameter] public string Nickname { get; set; } = "";
+
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthState { get; set; } = default!;
+
+    private bool loaded;
+    private string userId = "";
+    private ApplicationUser? owner;
+    private List<AvailabilitySlot> slots = new();
+    private TimeZoneInfo tz = TimeZoneInfo.Utc;
+    private string tzLabel = "UTC";
+    private string? message;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Load during prerender (times shown in UTC until the browser timezone is known).
+        var state = await AuthState;
+        userId = state.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+        await ReloadAsync();
+        loaded = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            var ianaId = await JS.InvokeAsync<string>("calendarBooking.getTimeZone");
+            tz = TimeZoneInfo.FindSystemTimeZoneById(ianaId);
+            tzLabel = tz.Id;
+            StateHasChanged();
+        }
+        catch
+        {
+            // Keep UTC.
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        var (foundOwner, openSlots) = await Booking.GetOpenSlotsByNicknameAsync(Nickname, DateTime.UtcNow);
+        owner = foundOwner;
+        slots = openSlots.ToList();
+    }
+
+    private async Task BookAsync(AvailabilitySlot slot)
+    {
+        message = error = null;
+
+        if (string.IsNullOrEmpty(userId))
+        {
+            var returnUrl = $"u/{Uri.EscapeDataString(Nickname)}";
+            Nav.NavigateTo($"Account/Login?returnUrl={Uri.EscapeDataString(returnUrl)}", forceLoad: true);
+            return;
+        }
+
+        var result = slot.SlotType == SlotType.Instant
+            ? await Booking.BookInstantAsync(slot.Id, userId, DateTime.UtcNow)
+            : await Booking.RequestApprovalAsync(slot.Id, userId, DateTime.UtcNow);
+
+        if (!result.Ok)
+        {
+            error = result.Error;
+        }
+        else
+        {
+            message = slot.SlotType == SlotType.Instant
+                ? "Booked! It's on your calendar."
+                : "Request sent — you'll hear back when the owner responds.";
+        }
+
+        await ReloadAsync();
+    }
+
+    private string FormatRange(DateTime startUtc, DateTime endUtc)
+    {
+        var start = TimeZoneInfo.ConvertTimeFromUtc(startUtc, tz);
+        var end = TimeZoneInfo.ConvertTimeFromUtc(endUtc, tz);
+        var endText = end.Date == start.Date ? end.ToString("HH:mm") : end.ToString("ddd d MMM, HH:mm");
+        return $"{start:ddd d MMM, HH:mm} – {endText}";
+    }
+}

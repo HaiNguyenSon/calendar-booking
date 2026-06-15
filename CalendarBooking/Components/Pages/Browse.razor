@@ -1,0 +1,55 @@
+@page "/browse"
+@rendermode InteractiveServer
+@using CalendarBooking.Services
+@inject BookingService Booking
+
+@* PUBLIC. Anyone can browse; booking (on a user's page) is what asks for sign-in. *@
+
+<PageTitle>Browse calendars</PageTitle>
+
+<h1>Browse calendars</h1>
+<p class="text-muted">Find someone and book an open time. Browsing is open to everyone; booking asks you to sign in.</p>
+
+<div class="mb-3" style="max-width: 30rem;">
+    <input class="form-control" type="search" placeholder="Search by nickname"
+           value="@search" @oninput="OnSearchInput" aria-label="Search by nickname" />
+</div>
+
+@if (owners is null)
+{
+    <p><em>Loading…</em></p>
+}
+else if (owners.Count == 0)
+{
+    <p class="text-muted">No one matches right now.</p>
+}
+else
+{
+    <ul class="list-group" style="max-width: 30rem;">
+        @foreach (var o in owners)
+        {
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                <a href="@($"u/{Uri.EscapeDataString(o.Nickname)}")">@o.Nickname</a>
+                <span class="badge bg-primary rounded-pill">@o.OpenSlots open</span>
+            </li>
+        }
+    </ul>
+}
+
+@code {
+    private string? search;
+    private IReadOnlyList<OwnerSummary>? owners;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        search = e.Value?.ToString();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        owners = await Booking.GetOwnersWithOpenSlotsAsync(DateTime.UtcNow, search);
+    }
+}
