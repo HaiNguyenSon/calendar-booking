@@ -39,7 +39,7 @@ public class DoubleBookingIntegrationTests(PostgresFixture fixture) : IClassFixt
     private static ApplicationUser MakeUser()
     {
         var tag = Guid.NewGuid().ToString("N");
-        return new ApplicationUser { Id = tag, UserName = $"{tag}@x.test", Email = $"{tag}@x.test", Nickname = tag };
+        return new ApplicationUser { Id = tag, UserName = $"{tag}@x.test", Email = $"{tag}@x.test", Nickname = tag, PublicId = PublicCode.New() };
     }
 
     private async Task<(string ownerId, string a1, string a2, Guid slotId)> SeedInstantSlotAsync()

@@ -20,6 +20,15 @@ public class ApplicationUser : IdentityUser
     public string Nickname { get; set; } = string.Empty;
 
     /// <summary>
+    /// Stable, opaque 10-character public code (Crockford Base32). Used to subscribe to this
+    /// user via a link/code that doesn't depend on the (changeable) nickname or leak the
+    /// email. Generated at account creation; unique (index in AppDbContext).
+    /// </summary>
+    [Required]
+    [MaxLength(10)]
+    public string PublicId { get; set; } = string.Empty;
+
+    /// <summary>
     /// Optional public bio shown on the user's calendar page. Max 150 chars.
     /// Sanitize on display.
     /// </summary>

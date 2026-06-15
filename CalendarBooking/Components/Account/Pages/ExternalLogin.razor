@@ -163,6 +163,7 @@
 
         var user = CreateUser();
         user.Nickname = nickname;
+        user.PublicId = await GenerateUniquePublicIdAsync();
         await UserStore.SetUserNameAsync(user, emailFromProvider, CancellationToken.None);
         var emailStore = GetEmailStore();
         await emailStore.SetEmailAsync(user, emailFromProvider, CancellationToken.None);
@@ -184,6 +185,17 @@
         }
 
         message = $"Error: {string.Join(", ", result.Errors.Select(e => e.Description))}";
+    }
+
+    private async Task<string> GenerateUniquePublicIdAsync()
+    {
+        string code;
+        do
+        {
+            code = PublicCode.New();
+        }
+        while (await UserManager.Users.AnyAsync(u => u.PublicId == code));
+        return code;
     }
 
     private static ApplicationUser CreateUser()

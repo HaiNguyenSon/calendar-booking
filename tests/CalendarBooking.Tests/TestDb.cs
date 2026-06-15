@@ -52,6 +52,7 @@ internal static class TestDb
             UserName = $"{nickname}@example.com",
             Email = $"{nickname}@example.com",
             Nickname = nickname,
+            PublicId = PublicCode.New(),
         };
         db.Users.Add(user);
         db.SaveChanges();

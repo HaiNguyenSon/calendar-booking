@@ -32,6 +32,10 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
         // HardenNicknameUniqueness migration (EF can't model a functional index), so there is
         // intentionally no HasIndex(...) here.
 
+        // Opaque public code, unique. It's stored canonically (uppercase Crockford Base32),
+        // so a plain unique index is enough.
+        builder.Entity<ApplicationUser>(user => user.HasIndex(u => u.PublicId).IsUnique());
+
         builder.Entity<AvailabilitySlot>(slot =>
         {
             slot.HasOne(s => s.Owner)

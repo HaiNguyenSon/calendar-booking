@@ -96,6 +96,7 @@
 
         var user = CreateUser();
         user.Nickname = nickname;
+        user.PublicId = await GenerateUniquePublicIdAsync();
 
         // Use the email as the login username for local accounts.
         await UserStore.SetUserNameAsync(user, Input.Email, CancellationToken.None);
@@ -140,6 +141,17 @@
             NavigationManager.ToAbsoluteUri("Account/ConfirmEmail").AbsoluteUri,
             new Dictionary<string, object?> { ["userId"] = userId, ["code"] = code, ["returnUrl"] = ReturnUrl });
         await EmailSender.SendConfirmationLinkAsync(user, email, HtmlEncoder.Default.Encode(callbackUrl));
+    }
+
+    private async Task<string> GenerateUniquePublicIdAsync()
+    {
+        string code;
+        do
+        {
+            code = PublicCode.New();
+        }
+        while (await UserManager.Users.AnyAsync(u => u.PublicId == code));
+        return code;
     }
 
     private static ApplicationUser CreateUser()
