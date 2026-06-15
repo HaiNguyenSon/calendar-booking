@@ -88,6 +88,7 @@ builder.Services.Configure<CalendarBooking.Services.BookingOptions>(builder.Conf
 builder.Services.AddScoped<CalendarBooking.Services.AvailabilityService>();
 builder.Services.AddScoped<CalendarBooking.Services.BookingService>();
 builder.Services.AddScoped<CalendarBooking.Services.ApprovalService>();
+builder.Services.AddScoped<CalendarBooking.Services.CancellationService>();
 
 var app = builder.Build();
 
