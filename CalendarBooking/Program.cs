@@ -97,9 +97,17 @@ builder.Services.AddScoped<CalendarBooking.Services.CancellationService>();
 builder.Services.AddScoped<CalendarBooking.Services.AccountCleanupService>();
 builder.Services.AddHostedService<CalendarBooking.Services.StaleRequestService>();
 
-// External calendar sync (Phase 7). The dispatcher is registered now and is a no-op until
-// an IExternalCalendarClient (e.g. Google Calendar) is registered. See docs/EXTERNAL-SYNC.md.
+// External calendar sync (Phase 7). The dispatcher fans out to any registered
+// IExternalCalendarClient. See docs/EXTERNAL-SYNC.md.
 builder.Services.AddScoped<CalendarBooking.Services.CalendarSyncService>();
+builder.Services.AddSingleton<CalendarBooking.Services.GoogleCalendarFlowFactory>();
+builder.Services.AddScoped<CalendarBooking.Services.GoogleCalendarConnector>();
+// Register the Google client (and the background push dispatcher) only when Google
+// credentials are configured — same credentials as Google login.
+if (!string.IsNullOrEmpty(googleClientId) && !string.IsNullOrEmpty(googleClientSecret))
+{
+    builder.Services.AddScoped<CalendarBooking.Services.IExternalCalendarClient, CalendarBooking.Services.GoogleCalendarClient>();
+}
 
 var app = builder.Build();
 
@@ -125,5 +133,6 @@ app.MapRazorComponents<App>()
 
 // Maps the account HTTP endpoints (e.g. POST /Account/Logout).
 app.MapAdditionalIdentityEndpoints();
+app.MapGoogleCalendarEndpoints();
 
 app.Run();

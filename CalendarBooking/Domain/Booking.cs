@@ -51,4 +51,10 @@ public class Booking
     /// sends it at most once. Null until then.
     /// </summary>
     public DateTime? ReminderSentUtc { get; set; }
+
+    /// <summary>
+    /// Set once this confirmed booking has been pushed to connected external calendars, so
+    /// the background sync dispatcher pushes it at most once. Null until then.
+    /// </summary>
+    public DateTime? CalendarSyncedUtc { get; set; }
 }

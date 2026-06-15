@@ -19,6 +19,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<BookingRequest> BookingRequests => Set<BookingRequest>();
     public DbSet<Booking> Bookings => Set<Booking>();
     public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<ExternalCalendarConnection> ExternalCalendarConnections => Set<ExternalCalendarConnection>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -118,6 +119,17 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
             notification.HasIndex(n => new { n.UserId, n.CreatedUtc });
 
             notification.Property(n => n.Message).HasMaxLength(500);
+        });
+
+        builder.Entity<ExternalCalendarConnection>(connection =>
+        {
+            connection.HasOne(c => c.User)
+                .WithMany()
+                .HasForeignKey(c => c.UserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // One connection per (user, provider).
+            connection.HasIndex(c => new { c.UserId, c.Provider }).IsUnique();
         });
     }
 }
