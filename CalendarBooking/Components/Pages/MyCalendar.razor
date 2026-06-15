@@ -7,6 +7,7 @@
 @using Microsoft.AspNetCore.Identity
 @using Microsoft.AspNetCore.WebUtilities
 @inject AvailabilityService Availability
+@inject BookingService Booking
 @inject ApprovalService Approvals
 @inject CancellationService Cancellations
 @inject SubscriptionService Subscriptions
@@ -44,6 +45,8 @@ else
             @string.Join(", ", newSubscribers.Take(25).Select(s => s.Nickname))@(newSubscribers.Count > 25 ? $", and {newSubscribers.Count - 25} more" : "").
         </div>
     }
+
+    <h2 class="h5 mb-3">Your calendar</h2>
 
     <div class="card mb-4" style="max-width: 40rem;">
         <div class="card-body">
@@ -87,48 +90,6 @@ else
             {
                 <p class="small mb-2">Connect to push your confirmed bookings to Microsoft/Outlook Calendar.</p>
                 <a class="btn btn-primary btn-sm" href="Account/Calendar/ConnectMicrosoft">Connect Microsoft Calendar</a>
-            }
-        </div>
-    </div>
-
-    <div class="card mb-4" style="max-width: 40rem;">
-        <div class="card-body">
-            <h2 class="h6 card-title">Subscriptions</h2>
-            <p class="small mb-2">
-                Your code: <strong>@myPublicId</strong>
-                <span class="text-muted">— share it so others can subscribe to you.</span>
-            </p>
-
-            @if (subscribeMessage is not null)
-            {
-                <div class="alert alert-success py-2">@subscribeMessage</div>
-            }
-            @if (subscribeError is not null)
-            {
-                <div class="alert alert-danger py-2">@subscribeError</div>
-            }
-
-            <div class="d-flex gap-2 mb-3 flex-wrap">
-                <input class="form-control form-control-sm" style="max-width: 16rem;"
-                       placeholder="Enter a user's code" @bind="subscribeCode" />
-                <button class="btn btn-primary btn-sm" @onclick="SubscribeByCodeAsync">Subscribe</button>
-            </div>
-
-            @if (subscriptions.Count == 0)
-            {
-                <p class="text-muted small mb-0">You're not subscribed to anyone yet.</p>
-            }
-            else
-            {
-                <ul class="list-group">
-                    @foreach (var sub in subscriptions)
-                    {
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            <a href="@($"u/{Uri.EscapeDataString(sub.Nickname)}")">@sub.Nickname</a>
-                            <button class="btn btn-outline-secondary btn-sm" @onclick="() => UnsubscribeAsync(sub.UserId)">Unsubscribe</button>
-                        </li>
-                    }
-                </ul>
             }
         </div>
     </div>
@@ -310,6 +271,98 @@ else
     }
 
     <hr class="my-4" />
+
+    @* The link between the two calendars: pick a followed user to load their calendar below. *@
+    <div class="card mb-3" style="max-width: 40rem;">
+        <div class="card-body">
+            <h2 class="h6 card-title">People you follow</h2>
+            <p class="small mb-2">
+                Your code: <strong>@myPublicId</strong>
+                <span class="text-muted">— share it so others can subscribe to you.</span>
+            </p>
+
+            @if (subscribeMessage is not null)
+            {
+                <div class="alert alert-success py-2">@subscribeMessage</div>
+            }
+            @if (subscribeError is not null)
+            {
+                <div class="alert alert-danger py-2">@subscribeError</div>
+            }
+
+            <div class="d-flex gap-2 mb-3 flex-wrap">
+                <input class="form-control form-control-sm" style="max-width: 16rem;"
+                       placeholder="Enter a user's code" @bind="subscribeCode" />
+                <button class="btn btn-primary btn-sm" @onclick="SubscribeByCodeAsync">Subscribe</button>
+            </div>
+
+            @if (subscriptions.Count == 0)
+            {
+                <p class="text-muted small mb-0">You're not subscribed to anyone yet. Subscribe with a code to book them below.</p>
+            }
+            else
+            {
+                <p class="small text-muted mb-1">Pick someone to load their calendar:</p>
+                <div class="d-flex flex-wrap gap-2">
+                    @foreach (var sub in subscriptions)
+                    {
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button class="btn @(selectedTargetId == sub.UserId ? "btn-primary" : "btn-outline-primary")"
+                                    @onclick="() => SelectSubscribedAsync(sub)">
+                                @sub.Nickname
+                            </button>
+                            <button class="btn btn-outline-secondary" title="Unsubscribe"
+                                    @onclick="() => UnsubscribeAsync(sub.UserId)">&times;</button>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    <h2 class="h5 mb-3">Book a time</h2>
+    @if (selectedTargetId is null)
+    {
+        <p class="text-muted">Pick someone you follow above to see their open times.</p>
+    }
+    else
+    {
+        <h3 class="h6">@selectedNickname</h3>
+        @if (bookingMessage is not null)
+        {
+            <div class="alert alert-success" role="alert">@bookingMessage</div>
+        }
+        @if (bookingError is not null)
+        {
+            <div class="alert alert-danger" role="alert">@bookingError</div>
+        }
+
+        @if (bookingSlots.Count == 0)
+        {
+            <p class="text-muted">No open slots right now.</p>
+        }
+        else
+        {
+            <ul class="list-group" style="max-width: 40rem;">
+                @foreach (var slot in bookingSlots)
+                {
+                    <li class="list-group-item d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <div>
+                            <div class="fw-semibold">@FormatRange(slot.StartUtc, slot.EndUtc)</div>
+                            <span class="badge @(slot.SlotType == SlotType.Instant ? "bg-success" : "bg-warning text-dark")">
+                                @(slot.SlotType == SlotType.Instant ? "Instant" : "Approval")
+                            </span>
+                        </div>
+                        <button class="btn btn-primary btn-sm" @onclick="() => BookFromCalendarAsync(slot)">
+                            @(slot.SlotType == SlotType.Instant ? "Book" : "Request")
+                        </button>
+                    </li>
+                }
+            </ul>
+        }
+    }
+
+    <hr class="my-4" />
     <p class="small"><a class="text-danger" href="Account/Close">Close my account</a></p>
 }
 
@@ -346,6 +399,13 @@ else
     private string? subscribeCode;
     private string? subscribeMessage;
     private string? subscribeError;
+
+    // Second calendar: the followed user whose open times are shown for booking.
+    private string? selectedTargetId;
+    private string? selectedNickname;
+    private List<AvailabilitySlot> bookingSlots = new();
+    private string? bookingMessage;
+    private string? bookingError;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -440,7 +500,53 @@ else
     {
         subscribeMessage = subscribeError = null;
         await Subscriptions.UnsubscribeAsync(userId, targetId);
+        if (selectedTargetId == targetId)
+        {
+            selectedTargetId = null;
+            selectedNickname = null;
+            bookingSlots = new();
+        }
         await LoadAsync();
+    }
+
+    private async Task SelectSubscribedAsync(SubscriptionView sub)
+    {
+        selectedTargetId = sub.UserId;
+        selectedNickname = sub.Nickname;
+        bookingMessage = bookingError = null;
+        await LoadBookingSlotsAsync();
+    }
+
+    private async Task LoadBookingSlotsAsync()
+    {
+        if (selectedNickname is null)
+        {
+            return;
+        }
+        var (_, openSlots) = await Booking.GetOpenSlotsByNicknameAsync(selectedNickname, DateTime.UtcNow);
+        bookingSlots = openSlots.ToList();
+    }
+
+    private async Task BookFromCalendarAsync(AvailabilitySlot slot)
+    {
+        bookingMessage = bookingError = null;
+        var result = slot.SlotType == SlotType.Instant
+            ? await Booking.BookInstantAsync(slot.Id, userId, DateTime.UtcNow)
+            : await Booking.RequestApprovalAsync(slot.Id, userId, DateTime.UtcNow);
+
+        if (!result.Ok)
+        {
+            bookingError = result.Error;
+        }
+        else
+        {
+            bookingMessage = slot.SlotType == SlotType.Instant
+                ? "Booked! It's on your calendar."
+                : "Request sent — you'll hear back when the owner responds.";
+        }
+
+        await LoadBookingSlotsAsync();
+        await LoadAsync(); // refresh "My bookings" / availability too
     }
 
     private string GetReason(Guid bookingId) => cancelReasons.TryGetValue(bookingId, out var r) ? r : "";
