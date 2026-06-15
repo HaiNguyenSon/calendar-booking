@@ -70,6 +70,12 @@ public class AccountCleanupService(AppDbContext db, NotificationService notifica
         var notes = await db.Notifications.Where(n => n.UserId == userId).ToListAsync(ct);
         db.Notifications.RemoveRange(notes);
 
+        // 4b. Remove subscriptions in both directions (theirs and to them).
+        var subscriptions = await db.Subscriptions
+            .Where(s => s.SubscriberId == userId || s.TargetId == userId)
+            .ToListAsync(ct);
+        db.Subscriptions.RemoveRange(subscriptions);
+
         // 5. Anonymize the account and disable login. The row is kept so historical bookings
         //    (which reference this user) remain valid.
         var tag = Guid.NewGuid().ToString("N")[..8];

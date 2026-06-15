@@ -21,6 +21,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<ExternalCalendarConnection> ExternalCalendarConnections => Set<ExternalCalendarConnection>();
     public DbSet<ExternalCalendarEvent> ExternalCalendarEvents => Set<ExternalCalendarEvent>();
+    public DbSet<Subscription> Subscriptions => Set<Subscription>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -141,6 +142,24 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
         {
             // Looked up by booking (to delete on cancellation).
             calendarEvent.HasIndex(e => e.BookingId);
+        });
+
+        builder.Entity<Subscription>(subscription =>
+        {
+            subscription.HasOne(s => s.Subscriber)
+                .WithMany()
+                .HasForeignKey(s => s.SubscriberId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            subscription.HasOne(s => s.Target)
+                .WithMany()
+                .HasForeignKey(s => s.TargetId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // No duplicate subscriptions; the composite also serves "who I follow".
+            subscription.HasIndex(s => new { s.SubscriberId, s.TargetId }).IsUnique();
+            // "Who follows me" / subscriber counts.
+            subscription.HasIndex(s => s.TargetId);
         });
     }
 }

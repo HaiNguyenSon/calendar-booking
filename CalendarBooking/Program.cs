@@ -127,6 +127,7 @@ builder.Services.AddScoped<CalendarBooking.Services.BookingService>();
 builder.Services.AddScoped<CalendarBooking.Services.ApprovalService>();
 builder.Services.AddScoped<CalendarBooking.Services.CancellationService>();
 builder.Services.AddScoped<CalendarBooking.Services.AccountCleanupService>();
+builder.Services.AddScoped<CalendarBooking.Services.SubscriptionService>();
 builder.Services.AddHostedService<CalendarBooking.Services.StaleRequestService>();
 
 // External calendar sync (Phase 7). The dispatcher fans out to any registered
