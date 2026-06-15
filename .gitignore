@@ -30,3 +30,6 @@ out/
 *.log
 .DS_Store
 Thumbs.db
+
+# This repo tracks CLAUDE.md, but a global core.excludesFile ignores it — re-include it.
+!CLAUDE.md
