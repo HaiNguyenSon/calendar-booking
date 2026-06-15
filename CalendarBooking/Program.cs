@@ -97,6 +97,10 @@ builder.Services.AddScoped<CalendarBooking.Services.CancellationService>();
 builder.Services.AddScoped<CalendarBooking.Services.AccountCleanupService>();
 builder.Services.AddHostedService<CalendarBooking.Services.StaleRequestService>();
 
+// External calendar sync (Phase 7). The dispatcher is registered now and is a no-op until
+// an IExternalCalendarClient (e.g. Google Calendar) is registered. See docs/EXTERNAL-SYNC.md.
+builder.Services.AddScoped<CalendarBooking.Services.CalendarSyncService>();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.

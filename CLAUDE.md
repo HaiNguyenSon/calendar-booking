@@ -30,7 +30,14 @@ dotnet test
 dotnet test --filter "FullyQualifiedName~BookingServiceTests"   # one class
 ```
 
-Domain logic lives in `Services/` (AvailabilityService, BookingService, ApprovalService, CancellationService) precisely so it can be unit-tested without a database; `tests/CalendarBooking.Tests` covers the booking rules there. The interactive Razor UI is verified by running the app. Note: the in-memory provider ignores the partial unique index and transactions, so the database-level double-booking guard is a Postgres-only guarantee, not covered by unit tests.
+Domain logic lives in `Services/` precisely so it can be unit-tested without a database; `tests/CalendarBooking.Tests` covers the rules there. The interactive Razor UI is verified by running the app. Note: the in-memory provider ignores the partial unique index and transactions, so the database-level double-booking guard is a Postgres-only guarantee, not covered by unit tests.
+
+Service map:
+- `AvailabilityService` / `BookingService` / `ApprovalService` / `CancellationService` — the booking loop (define slots, book/request, approve/contention/on-behalf-of, cancel).
+- `NotificationService` + `NotificationBroadcaster` — in-app notifications. `Queue` adds a row to the caller's DbContext (atomic with the action); `PushQueued` (called after SaveChanges) fires the broadcaster so a recipient's open page refreshes live over their Blazor circuit.
+- Background workers (`BackgroundService`, registered `AddHostedService`): `EmailDispatcherService` (emails notifications out-of-band via `IAppEmailSender` — currently a logging stub), `ReminderService` (booking-starts-soon), `StaleRequestService` (expire pending requests whose slot passed).
+- `AccountCleanupService` — closes an account by anonymizing it (FKs are Restrict; history is kept), tidying future slots/bookings/requests first.
+- `CalendarSyncService` + `IExternalCalendarClient` — Phase 7 external-sync seam, **inert until a provider is implemented**. See `docs/EXTERNAL-SYNC.md`.
 
 Google login is optional and off unless credentials are set via user-secrets (`Authentication:Google:ClientId` / `ClientSecret`) — see the README. The app runs fine without them.
 
