@@ -132,13 +132,19 @@ builder.Services.AddHostedService<CalendarBooking.Services.StaleRequestService>(
 // External calendar sync (Phase 7). The dispatcher fans out to any registered
 // IExternalCalendarClient. See docs/EXTERNAL-SYNC.md.
 builder.Services.AddScoped<CalendarBooking.Services.CalendarSyncService>();
+builder.Services.AddHttpClient();
 builder.Services.AddSingleton<CalendarBooking.Services.GoogleCalendarFlowFactory>();
 builder.Services.AddScoped<CalendarBooking.Services.GoogleCalendarConnector>();
-// Register the Google client (and the background push dispatcher) only when Google
-// credentials are configured — same credentials as Google login.
+builder.Services.AddScoped<CalendarBooking.Services.MicrosoftCalendarConnector>();
+// Register each external client only when its credentials are configured.
 if (!string.IsNullOrEmpty(googleClientId) && !string.IsNullOrEmpty(googleClientSecret))
 {
     builder.Services.AddScoped<CalendarBooking.Services.IExternalCalendarClient, CalendarBooking.Services.GoogleCalendarClient>();
+}
+if (!string.IsNullOrEmpty(builder.Configuration["Authentication:Microsoft:ClientId"])
+    && !string.IsNullOrEmpty(builder.Configuration["Authentication:Microsoft:ClientSecret"]))
+{
+    builder.Services.AddScoped<CalendarBooking.Services.IExternalCalendarClient, CalendarBooking.Services.MicrosoftCalendarClient>();
 }
 // The push dispatcher idles when no providers are configured, so it's always registered.
 builder.Services.AddHostedService<CalendarBooking.Services.CalendarSyncDispatcher>();
@@ -168,6 +174,7 @@ app.MapRazorComponents<App>()
 // Maps the account HTTP endpoints (e.g. POST /Account/Logout).
 app.MapAdditionalIdentityEndpoints();
 app.MapGoogleCalendarEndpoints();
+app.MapMicrosoftCalendarEndpoints();
 
 app.Run();
 

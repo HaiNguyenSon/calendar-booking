@@ -9,6 +9,7 @@
 @inject ApprovalService Approvals
 @inject CancellationService Cancellations
 @inject GoogleCalendarConnector Calendar
+@inject MicrosoftCalendarConnector MicrosoftCalendar
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -52,6 +53,29 @@ else
             {
                 <p class="small mb-2">Connect to push your confirmed bookings to Google Calendar.</p>
                 <a class="btn btn-primary btn-sm" href="Account/Calendar/Connect">Connect Google Calendar</a>
+            }
+        </div>
+    </div>
+
+    <div class="card mb-4" style="max-width: 40rem;">
+        <div class="card-body">
+            <h2 class="h6 card-title">Microsoft Calendar</h2>
+            @if (!msConfigured)
+            {
+                <p class="text-muted small mb-0">Microsoft Calendar sync isn't configured on this server.</p>
+            }
+            else if (msConnected)
+            {
+                <p class="small mb-2">Connected — your confirmed bookings are pushed to Outlook.</p>
+                <form action="Account/Calendar/DisconnectMicrosoft" method="post">
+                    <AntiforgeryToken />
+                    <button type="submit" class="btn btn-outline-secondary btn-sm">Disconnect</button>
+                </form>
+            }
+            else
+            {
+                <p class="small mb-2">Connect to push your confirmed bookings to Microsoft/Outlook Calendar.</p>
+                <a class="btn btn-primary btn-sm" href="Account/Calendar/ConnectMicrosoft">Connect Microsoft Calendar</a>
             }
         </div>
     </div>
@@ -255,9 +279,11 @@ else
     private string? onBehalfSlotId;
     private string? onBehalfClient;
 
-    // Google Calendar connection state.
+    // External calendar connection state.
     private bool calendarConfigured;
     private bool calendarConnected;
+    private bool msConfigured;
+    private bool msConnected;
     private string? calendarStatus;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -292,6 +318,8 @@ else
         // Google Calendar connection state + any status from the connect/disconnect redirect.
         calendarConfigured = Calendar.IsConfigured;
         calendarConnected = calendarConfigured && await Calendar.IsConnectedAsync(userId);
+        msConfigured = MicrosoftCalendar.IsConfigured;
+        msConnected = msConfigured && await MicrosoftCalendar.IsConnectedAsync(userId);
         var query = QueryHelpers.ParseQuery(Nav.ToAbsoluteUri(Nav.Uri).Query);
         if (query.TryGetValue("calendar", out var calendarResult))
         {

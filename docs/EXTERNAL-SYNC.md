@@ -47,8 +47,24 @@ booking; within ~30s the `CalendarSyncDispatcher` should create an event on the 
 Google calendar. None of this can be exercised without live credentials, so it is not
 covered by automated tests (the dispatcher/fan-out logic is, via a fake client).
 
+## Microsoft Graph (Outlook)
+
+Also implemented as a config-gated scaffold (`MicrosoftCalendarConnector` +
+`MicrosoftCalendarClient`), done over plain HTTP (no SDK) and reusing the same encrypted
+`ExternalCalendarConnection` storage with `Provider = "Microsoft"`. **Untested against live
+Graph.**
+
+- **Credentials:** an Azure AD app registration — `Authentication:Microsoft:ClientId` /
+  `ClientSecret` (and optional `Tenant`, default `common`). Register the redirect URI
+  `https://localhost:7043/Account/Calendar/MicrosoftCallback`, and grant delegated
+  `Calendars.ReadWrite` + `offline_access`.
+- Connect/disconnect: `/Account/Calendar/ConnectMicrosoft` and `…/DisconnectMicrosoft`
+  (button on `/my`). Push, delete, and free/busy (`getSchedule`) all go through Graph REST.
+  Microsoft rotates refresh tokens, so a rotated token returned at access-token time is
+  re-persisted.
+
 ## What's left
 
-- Wire `GetBusyIntervalsAsync` into availability so externally-busy times aren't bookable.
-- Two-way reconciliation (handle events changed/deleted in Google; avoid loops).
-- A Microsoft Graph `IExternalCalendarClient` (same shape, analogous OAuth).
+- Two-way reconciliation (handle events changed/deleted in Google/Outlook; avoid loops) —
+  needs webhooks/polling.
+- Exercise both providers against live APIs (needs real credentials).
