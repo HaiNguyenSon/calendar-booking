@@ -22,9 +22,9 @@
             <h2>Create a new account.</h2>
             <hr />
             <ValidationSummary class="text-danger" role="alert" />
-            <div class="form-floating mb-3">
-                <InputText @bind-Value="Input.Nickname" class="form-control" autocomplete="nickname" aria-required="true" placeholder="your public nickname" />
-                <label for="Input.Nickname">Nickname</label>
+            <div class="mb-3">
+                @* Interactive island: renders the nickname input and checks availability live. *@
+                <NicknameField />
                 <ValidationMessage For="() => Input.Nickname" class="text-danger" />
                 <small class="form-text text-muted">Shown publicly instead of your email. Must be unique.</small>
             </div>

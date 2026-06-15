@@ -1,0 +1,82 @@
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@inject UserManager<ApplicationUser> UserManager
+
+@* An interactive island embedded in the (static) registration form. It renders the
+   nickname <input> — named "Input.Nickname" so it still posts with the form — and, as
+   the user types, checks availability over the SignalR circuit and shows live feedback.
+   This is advisory only: Register.razor re-checks on submit, and the database unique
+   index is the final guard. *@
+
+<div class="form-floating mb-1">
+    <input id="nickname" name="Input.Nickname" class="form-control" autocomplete="nickname"
+           aria-required="true" placeholder="your public nickname" @oninput="OnInputAsync" />
+    <label for="nickname" class="form-label">Nickname</label>
+</div>
+
+@if (checking)
+{
+    <small class="form-text text-muted">Checking availability…</small>
+}
+else if (status == Availability.Available)
+{
+    <small class="form-text text-success">✓ &ldquo;@lastChecked&rdquo; is available</small>
+}
+else if (status == Availability.Taken)
+{
+    <small class="form-text text-danger">✗ &ldquo;@lastChecked&rdquo; is already taken</small>
+}
+
+@code {
+    private enum Availability { Unknown, Available, Taken }
+
+    private string lastChecked = "";
+    private bool checking;
+    private Availability status = Availability.Unknown;
+
+    // Lets a newer keystroke cancel the debounce/query of an older one.
+    private CancellationTokenSource? inFlight;
+
+    private async Task OnInputAsync(ChangeEventArgs e)
+    {
+        var candidate = (e.Value?.ToString() ?? "").Trim();
+
+        inFlight?.Cancel();
+        var cts = new CancellationTokenSource();
+        inFlight = cts;
+
+        status = Availability.Unknown;
+
+        if (candidate.Length == 0)
+        {
+            checking = false;
+            return;
+        }
+
+        checking = true;
+        try
+        {
+            // Debounce: wait for a typing pause before hitting the database.
+            await Task.Delay(400, cts.Token);
+
+            var taken = await UserManager.Users
+                .AnyAsync(u => u.Nickname.ToLower() == candidate.ToLower(), cts.Token);
+
+            lastChecked = candidate;
+            status = taken ? Availability.Taken : Availability.Available;
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer keystroke; let the newer call win.
+            return;
+        }
+        finally
+        {
+            if (inFlight == cts)
+            {
+                checking = false;
+            }
+        }
+    }
+}
