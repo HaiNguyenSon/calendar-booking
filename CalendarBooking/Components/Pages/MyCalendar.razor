@@ -160,21 +160,37 @@ else
                 <ul class="list-group">
                     @foreach (var slot in PeriodSlots)
                     {
-                        <li class="list-group-item d-flex justify-content-between align-items-start flex-wrap gap-2">
-                            <div>
-                                <div class="fw-semibold">@FormatRange(slot.StartUtc, slot.EndUtc)</div>
-                                <span class="badge @(slot.SlotType == SlotType.Instant ? "bg-success" : "bg-warning text-dark")">
-                                    @(slot.SlotType == SlotType.Instant ? "Instant" : "Approval")
-                                </span>
-                                @if (slot.IsBooked)
-                                {
-                                    <span class="badge bg-secondary">Booked</span>
-                                }
+                        <li class="list-group-item">
+                            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                                <div>
+                                    <div class="fw-semibold">@FormatRange(slot.StartUtc, slot.EndUtc)</div>
+                                    <span class="badge @(slot.SlotType == SlotType.Instant ? "bg-success" : "bg-warning text-dark")">
+                                        @(slot.SlotType == SlotType.Instant ? "Instant" : "Approval")
+                                    </span>
+                                    @if (slot.IsBooked)
+                                    {
+                                        <span class="badge bg-secondary">Booked by @AttendeeFor(slot.Id)</span>
+                                    }
+                                </div>
+                                <button class="btn btn-outline-danger btn-sm" disabled="@slot.IsBooked"
+                                        @onclick="() => DeleteSlotAsync(slot.Id)">
+                                    Delete
+                                </button>
                             </div>
-                            <button class="btn btn-outline-danger btn-sm" disabled="@slot.IsBooked"
-                                    @onclick="() => DeleteSlotAsync(slot.Id)">
-                                Delete
-                            </button>
+
+                            @* People trying to book this slot — accept (✓) or decline (✗) inline. *@
+                            @foreach (var req in PendingFor(slot.Id))
+                            {
+                                <div class="d-flex justify-content-between align-items-center mt-2">
+                                    <span class="small"><strong>@req.RequesterNickname</strong> wants to book this</span>
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-success" title="Accept @req.RequesterNickname"
+                                                @onclick="() => ApproveAsync(req.RequestId)">✓</button>
+                                        <button class="btn btn-danger" title="Decline @req.RequesterNickname"
+                                                @onclick="() => DeclineAsync(req.RequestId)">✗</button>
+                                    </div>
+                                </div>
+                            }
                         </li>
                     }
                 </ul>
@@ -184,33 +200,14 @@ else
 
     <hr class="my-4" />
 
-    <div class="row g-4">
-        <div class="col-12 col-lg-7">
-            <h2 class="h5">Incoming requests</h2>
-            @if (requests.Count == 0)
-            {
-                <p class="text-muted">No one is waiting on your approval.</p>
-            }
-            else
-            {
-                <ul class="list-group">
-                    @foreach (var req in requests)
-                    {
-                        <li class="list-group-item d-flex justify-content-between align-items-center flex-wrap gap-2">
-                            <div>
-                                <div class="fw-semibold">@FormatRange(req.StartUtc, req.EndUtc)</div>
-                                <span class="text-muted small">from @req.RequesterNickname</span>
-                            </div>
-                            <div class="btn-group">
-                                <button class="btn btn-success btn-sm" @onclick="() => ApproveAsync(req.RequestId)">Approve</button>
-                                <button class="btn btn-outline-secondary btn-sm" @onclick="() => DeclineAsync(req.RequestId)">Decline</button>
-                            </div>
-                        </li>
-                    }
-                </ul>
-            }
-        </div>
+    @if (requests.Any(r => !InPeriod(r.StartUtc)))
+    {
+        <p class="text-muted small">
+            @requests.Count(r => !InPeriod(r.StartUtc)) pending request(s) fall outside this @PeriodWord — navigate to their week/month to accept or decline.
+        </p>
+    }
 
+    <div class="row g-4">
         <div class="col-12 col-lg-5">
             <div class="card">
                 <div class="card-body">
@@ -392,6 +389,7 @@ else
     private List<AvailabilitySlot> slots = new();
     private List<IncomingRequest> requests = new();
     private List<MyBooking> bookings = new();
+    private Dictionary<Guid, string> attendeeBySlot = new();
     private readonly Dictionary<Guid, string> cancelReasons = new();
     private string? error;
     private readonly SlotForm form = new();
@@ -539,7 +537,17 @@ else
         requests = (await Approvals.GetIncomingRequestsAsync(userId, DateTime.UtcNow)).ToList();
         bookings = (await Cancellations.GetUpcomingBookingsForUserAsync(userId, DateTime.UtcNow)).ToList();
         subscriptions = (await Subscriptions.GetSubscriptionsAsync(userId)).ToList();
+
+        // Map each of my booked slots to who booked it (one confirmed booking per slot).
+        attendeeBySlot = bookings
+            .Where(b => b.ActingUserIsOwner)
+            .GroupBy(b => b.SlotId)
+            .ToDictionary(g => g.Key, g => g.First().AttendeeNickname);
     }
+
+    // Who booked my slot, and who's waiting on my approval for it.
+    private string AttendeeFor(Guid slotId) => attendeeBySlot.TryGetValue(slotId, out var nickname) ? nickname : "someone";
+    private IEnumerable<IncomingRequest> PendingFor(Guid slotId) => requests.Where(r => r.SlotId == slotId);
 
     private async Task SubscribeByCodeAsync()
     {

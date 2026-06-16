@@ -27,7 +27,7 @@ public class ApprovalService(AppDbContext db, NotificationService notifications)
             join u in db.Users on r.RequesterId equals u.Id
             where r.Status == RequestStatus.Pending && s.OwnerId == ownerId && !s.IsBooked && s.EndUtc > nowUtc
             orderby s.StartUtc
-            select new IncomingRequest(r.Id, u.Nickname, s.StartUtc, s.EndUtc)
+            select new IncomingRequest(r.Id, s.Id, u.Nickname, s.StartUtc, s.EndUtc)
         ).ToListAsync(ct);
     }
 
@@ -189,4 +189,4 @@ public class ApprovalService(AppDbContext db, NotificationService notifications)
 }
 
 /// <summary>A pending request as shown to the slot owner.</summary>
-public record IncomingRequest(Guid RequestId, string RequesterNickname, DateTime StartUtc, DateTime EndUtc);
+public record IncomingRequest(Guid RequestId, Guid SlotId, string RequesterNickname, DateTime StartUtc, DateTime EndUtc);

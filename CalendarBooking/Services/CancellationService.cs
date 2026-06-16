@@ -36,7 +36,7 @@ public class CancellationService(AppDbContext db, NotificationService notificati
                   && (b.AttendeeId == userId || b.OwnerId == userId)
                   && s.EndUtc > nowUtc
             orderby s.StartUtc
-            select new MyBooking(b.Id, s.StartUtc, s.EndUtc, owner.Nickname, attendee.Nickname, b.OwnerId == userId)
+            select new MyBooking(b.Id, s.Id, s.StartUtc, s.EndUtc, owner.Nickname, attendee.Nickname, b.OwnerId == userId)
         ).ToListAsync(ct);
     }
 
@@ -100,5 +100,5 @@ public class CancellationService(AppDbContext db, NotificationService notificati
 
 /// <summary>A confirmed booking as shown on the user's own schedule.</summary>
 public record MyBooking(
-    Guid BookingId, DateTime StartUtc, DateTime EndUtc,
+    Guid BookingId, Guid SlotId, DateTime StartUtc, DateTime EndUtc,
     string OwnerNickname, string AttendeeNickname, bool ActingUserIsOwner);
