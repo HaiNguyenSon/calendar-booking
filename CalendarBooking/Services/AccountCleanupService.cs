@@ -76,6 +76,10 @@ public class AccountCleanupService(AppDbContext db, NotificationService notifica
             .ToListAsync(ct);
         db.Subscriptions.RemoveRange(subscriptions);
 
+        // 4c. Remove their standing availability rules.
+        var rules = await db.WeeklyAvailabilityRules.Where(r => r.OwnerId == userId).ToListAsync(ct);
+        db.WeeklyAvailabilityRules.RemoveRange(rules);
+
         // 5. Anonymize the account and disable login. The row is kept so historical bookings
         //    (which reference this user) remain valid.
         var tag = Guid.NewGuid().ToString("N")[..8];

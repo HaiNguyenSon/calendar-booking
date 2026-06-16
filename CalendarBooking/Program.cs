@@ -135,6 +135,8 @@ builder.Services.AddScoped<CalendarBooking.Services.NotificationService>();
 builder.Services.AddHostedService<CalendarBooking.Services.EmailDispatcherService>();
 builder.Services.AddHostedService<CalendarBooking.Services.ReminderService>();
 builder.Services.AddScoped<CalendarBooking.Services.AvailabilityService>();
+builder.Services.AddScoped<CalendarBooking.Services.AvailabilityRuleService>();
+builder.Services.AddHostedService<CalendarBooking.Services.AvailabilityRuleMaterializer>();
 builder.Services.AddScoped<CalendarBooking.Services.BookingService>();
 builder.Services.AddScoped<CalendarBooking.Services.ApprovalService>();
 builder.Services.AddScoped<CalendarBooking.Services.CancellationService>();

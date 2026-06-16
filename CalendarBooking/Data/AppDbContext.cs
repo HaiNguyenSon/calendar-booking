@@ -22,6 +22,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<ExternalCalendarConnection> ExternalCalendarConnections => Set<ExternalCalendarConnection>();
     public DbSet<ExternalCalendarEvent> ExternalCalendarEvents => Set<ExternalCalendarEvent>();
     public DbSet<Subscription> Subscriptions => Set<Subscription>();
+    public DbSet<WeeklyAvailabilityRule> WeeklyAvailabilityRules => Set<WeeklyAvailabilityRule>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -160,6 +161,16 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
             subscription.HasIndex(s => new { s.SubscriberId, s.TargetId }).IsUnique();
             // "Who follows me" / subscriber counts.
             subscription.HasIndex(s => s.TargetId);
+        });
+
+        builder.Entity<WeeklyAvailabilityRule>(rule =>
+        {
+            rule.HasOne(r => r.Owner)
+                .WithMany()
+                .HasForeignKey(r => r.OwnerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            rule.HasIndex(r => r.OwnerId);
         });
     }
 }
