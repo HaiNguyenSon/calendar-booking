@@ -3,6 +3,7 @@
 @using System.ComponentModel.DataAnnotations
 @using Microsoft.AspNetCore.Identity
 @inject UserManager<ApplicationUser> UserManager
+@inject ISmsSender Sms
 @inject IdentityRedirectManager RedirectManager
 
 @* Static SSR (no @rendermode): edits user fields via UserManager. PhoneNumber is the
@@ -19,6 +20,7 @@
             Nickname: <strong>@user?.Nickname</strong> · Your code: <strong>@user?.PublicId</strong>
         </p>
 
+        <h2 class="h6">Details</h2>
         <EditForm Model="Input" FormName="profile" OnValidSubmit="OnValidSubmitAsync" method="post">
             <DataAnnotationsValidator />
             <ValidationSummary class="text-danger" role="alert" />
@@ -46,6 +48,35 @@
 
             <button type="submit" class="btn btn-primary w-100">Save</button>
         </EditForm>
+
+        <hr class="my-4" />
+
+        <h2 class="h6">Phone verification</h2>
+        @if (string.IsNullOrEmpty(user?.PhoneNumber))
+        {
+            <p class="text-muted small mb-0">Add a phone number above and save it, then verify it here.</p>
+        }
+        else if (user.PhoneNumberConfirmed)
+        {
+            <p class="small text-success mb-0">✓ @user.PhoneNumber is verified.</p>
+        }
+        else
+        {
+            <p class="small mb-2">@user.PhoneNumber is not verified yet.</p>
+
+            <EditForm Model="phoneActionModel" FormName="send-code" OnValidSubmit="SendCodeAsync" method="post">
+                <button type="submit" class="btn btn-outline-primary btn-sm mb-3">Send verification code</button>
+            </EditForm>
+
+            <EditForm Model="Verify" FormName="verify-phone" OnValidSubmit="VerifyCodeAsync" method="post">
+                <DataAnnotationsValidator />
+                <div class="d-flex gap-2 flex-wrap align-items-start">
+                    <InputText @bind-Value="Verify.Code" class="form-control form-control-sm" style="max-width: 10rem;" placeholder="Enter code" />
+                    <button type="submit" class="btn btn-primary btn-sm">Verify</button>
+                </div>
+                <ValidationMessage For="() => Verify.Code" class="text-danger" />
+            </EditForm>
+        }
     </div>
 </div>
 
@@ -55,8 +86,14 @@
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;
 
-    [SupplyParameterFromForm]
+    [SupplyParameterFromForm(FormName = "profile")]
     private InputModel Input { get; set; } = new();
+
+    [SupplyParameterFromForm(FormName = "verify-phone")]
+    private VerifyModel Verify { get; set; } = new();
+
+    // EditForm needs a Model; the send-code form carries no fields.
+    private readonly object phoneActionModel = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -90,6 +127,35 @@
         }
 
         RedirectManager.RedirectToCurrentPageWithStatus("Your profile has been updated.", HttpContext);
+    }
+
+    private async Task SendCodeAsync()
+    {
+        if (string.IsNullOrEmpty(user.PhoneNumber))
+        {
+            RedirectManager.RedirectToCurrentPageWithStatus("Error: Save a phone number first.", HttpContext);
+        }
+
+        // Identity's phone token provider (from AddDefaultTokenProviders) makes a short numeric code.
+        var token = await UserManager.GenerateChangePhoneNumberTokenAsync(user, user.PhoneNumber!);
+        await Sms.SendAsync(user.PhoneNumber!, $"Your CalendarBooking verification code is {token}");
+        RedirectManager.RedirectToCurrentPageWithStatus("We've sent a verification code to your phone.", HttpContext);
+    }
+
+    private async Task VerifyCodeAsync()
+    {
+        // Confirms the (already-set) number when the code matches — sets PhoneNumberConfirmed.
+        var result = await UserManager.ChangePhoneNumberAsync(user, user.PhoneNumber ?? "", Verify.Code ?? "");
+        RedirectManager.RedirectToCurrentPageWithStatus(
+            result.Succeeded ? "Your phone number is verified." : "Error: Invalid or expired code.",
+            HttpContext);
+    }
+
+    private sealed class VerifyModel
+    {
+        [Required]
+        [Display(Name = "Code")]
+        public string? Code { get; set; }
     }
 
     private sealed class InputModel

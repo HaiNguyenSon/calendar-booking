@@ -116,6 +116,18 @@ else
 }
 builder.Services.AddScoped<IEmailSender<ApplicationUser>, IdentityNoOpEmailSender>();
 
+// SMS: real Twilio when Sms:Twilio is configured, otherwise log-only. Used for phone
+// confirmation codes.
+builder.Services.Configure<CalendarBooking.Services.SmsOptions>(builder.Configuration.GetSection("Sms:Twilio"));
+if (!string.IsNullOrWhiteSpace(builder.Configuration["Sms:Twilio:AccountSid"]))
+{
+    builder.Services.AddSingleton<CalendarBooking.Services.ISmsSender, CalendarBooking.Services.TwilioSmsSender>();
+}
+else
+{
+    builder.Services.AddSingleton<CalendarBooking.Services.ISmsSender, CalendarBooking.Services.LoggingSmsSender>();
+}
+
 // Domain services.
 builder.Services.Configure<CalendarBooking.Services.BookingOptions>(builder.Configuration.GetSection("Booking"));
 builder.Services.AddSingleton<CalendarBooking.Services.NotificationBroadcaster>();
