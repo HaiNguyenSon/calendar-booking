@@ -32,6 +32,13 @@ dotnet test --filter "FullyQualifiedName~BookingServiceTests"   # one class
 
 Most tests use the EF **in-memory** provider and need no database. Two suites need **Docker**: `DoubleBookingIntegrationTests` (real Postgres via Testcontainers — verifies the partial unique index the in-memory provider can't) and `AntiforgeryTests` (boots the app via `WebApplicationFactory<Program>`; `Program` is `public partial` so the test host can reference it). The interactive Razor UI is verified by running the app.
 
+### Local test users
+The local dev database may be seeded with two accounts (password `Passw0rd!` for both):
+- **user1** (user1@example.com) — "User One", has a couple of sample bookable slots.
+- **user2** (user2@example.com) — "User Two", **follows user1**.
+
+These live only in the local Postgres volume — they are **not** in code/migrations, so a fresh DB won't have them. Recreate by registering each via the app, then (slot/follow creation is interactive over the circuit) insert availability/`Subscriptions` rows directly with `psql`.
+
 ## Architecture
 
 .NET 8 **Blazor Web App**, single project, EF Core on PostgreSQL, ASP.NET Core Identity. Layers inside `CalendarBooking/`: `Domain/` (entities + enums), `Data/` (`AppDbContext` + migrations), `Services/` (domain logic), `Components/` (Razor UI).
