@@ -110,9 +110,63 @@ else
 
     <div class="row g-4">
         <div class="col-12 col-lg-5">
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h2 class="h5 card-title">Weekly bookable hours</h2>
+                    <p class="text-muted small">Pick days and a window; slots are created for the coming weeks (capped at year-end).</p>
+
+                    @if (weeklyError is not null)
+                    {
+                        <div class="alert alert-danger py-2" role="alert">@weeklyError</div>
+                    }
+                    @if (weeklyMessage is not null)
+                    {
+                        <div class="alert alert-success py-2" role="alert">@weeklyMessage</div>
+                    }
+
+                    <div class="mb-3 d-flex flex-wrap gap-3">
+                        <label class="form-check-label small"><input type="checkbox" class="form-check-input me-1" @bind="wkMon" /> Mon</label>
+                        <label class="form-check-label small"><input type="checkbox" class="form-check-input me-1" @bind="wkTue" /> Tue</label>
+                        <label class="form-check-label small"><input type="checkbox" class="form-check-input me-1" @bind="wkWed" /> Wed</label>
+                        <label class="form-check-label small"><input type="checkbox" class="form-check-input me-1" @bind="wkThu" /> Thu</label>
+                        <label class="form-check-label small"><input type="checkbox" class="form-check-input me-1" @bind="wkFri" /> Fri</label>
+                        <label class="form-check-label small"><input type="checkbox" class="form-check-input me-1" @bind="wkSat" /> Sat</label>
+                        <label class="form-check-label small"><input type="checkbox" class="form-check-input me-1" @bind="wkSun" /> Sun</label>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col">
+                            <label class="form-label">From</label>
+                            <input type="time" step="900" class="form-control" @bind="wkStart" />
+                        </div>
+                        <div class="col">
+                            <label class="form-label">To</label>
+                            <input type="time" step="900" class="form-control" @bind="wkEnd" />
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Slot length (minutes)</label>
+                        <input type="number" min="30" step="15" class="form-control" @bind="wkSlotMinutes" />
+                        <small class="form-text text-muted">At least 30, in 15-minute steps; slots end on the quarter hour.</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Weeks ahead</label>
+                        <input type="number" min="1" max="60" class="form-control" @bind="wkWeeks" />
+                        <small class="form-text text-muted">Capped at the end of the year.</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Booking type</label>
+                        <select class="form-select" @bind="wkType">
+                            <option value="@SlotType.ApprovalRequired">Ask my approval first</option>
+                            <option value="@SlotType.Instant">Confirm instantly</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-primary w-100" @onclick="GenerateWeeklyAsync">Create weekly availability</button>
+                </div>
+            </div>
+
             <div class="card">
                 <div class="card-body">
-                    <h2 class="h5 card-title">Add availability</h2>
+                    <h2 class="h5 card-title">Open to book (one-off)</h2>
 
                     @if (error is not null)
                     {
@@ -416,6 +470,16 @@ else
     private string? onBehalfSlotId;
     private string? onBehalfClient;
 
+    // Weekly bookable-hours generator state.
+    private bool wkMon, wkTue, wkWed, wkThu, wkFri, wkSat, wkSun;
+    private TimeOnly wkStart = new(9, 0);
+    private TimeOnly wkEnd = new(17, 0);
+    private int wkSlotMinutes = 30;
+    private int wkWeeks = 4;
+    private SlotType wkType = SlotType.ApprovalRequired;
+    private string? weeklyMessage;
+    private string? weeklyError;
+
     // External calendar connection state.
     private bool calendarConfigured;
     private bool calendarConnected;
@@ -689,6 +753,100 @@ else
 
         onBehalfSlotId = null;
         onBehalfClient = null;
+        await LoadAsync();
+    }
+
+    private async Task GenerateWeeklyAsync()
+    {
+        weeklyMessage = weeklyError = null;
+
+        var selectedDays = new List<DayOfWeek>();
+        if (wkMon) selectedDays.Add(DayOfWeek.Monday);
+        if (wkTue) selectedDays.Add(DayOfWeek.Tuesday);
+        if (wkWed) selectedDays.Add(DayOfWeek.Wednesday);
+        if (wkThu) selectedDays.Add(DayOfWeek.Thursday);
+        if (wkFri) selectedDays.Add(DayOfWeek.Friday);
+        if (wkSat) selectedDays.Add(DayOfWeek.Saturday);
+        if (wkSun) selectedDays.Add(DayOfWeek.Sunday);
+
+        if (selectedDays.Count == 0)
+        {
+            weeklyError = "Pick at least one day.";
+            return;
+        }
+        var startTime = wkStart;
+        var endTime = wkEnd;
+        if (endTime <= startTime)
+        {
+            weeklyError = "Enter a valid From/To window.";
+            return;
+        }
+        if (startTime.Minute % 15 != 0 || endTime.Minute % 15 != 0)
+        {
+            weeklyError = "From/To must be on the quarter hour.";
+            return;
+        }
+        if (wkSlotMinutes < 30 || wkSlotMinutes % 15 != 0)
+        {
+            weeklyError = "Slot length must be at least 30 minutes, in 15-minute steps.";
+            return;
+        }
+        if (wkWeeks < 1)
+        {
+            weeklyError = "Weeks ahead must be at least 1.";
+            return;
+        }
+
+        var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
+        // Horizon cap: end of this year, or end of January next year if it's December.
+        var cap = nowLocal.Month == 12
+            ? new DateTime(nowLocal.Year + 1, 1, 31)
+            : new DateTime(nowLocal.Year, 12, 31);
+        var endDate = nowLocal.Date.AddDays(wkWeeks * 7);
+        if (endDate > cap.Date)
+        {
+            endDate = cap.Date;
+        }
+
+        var startMin = (startTime.Hour * 60) + startTime.Minute;
+        var endMin = (endTime.Hour * 60) + endTime.Minute;
+        var nowUtc = DateTime.UtcNow;
+
+        var occurrences = new List<(DateTime StartUtc, DateTime EndUtc)>();
+        for (var day = nowLocal.Date; day <= endDate; day = day.AddDays(1))
+        {
+            if (!selectedDays.Contains(day.DayOfWeek))
+            {
+                continue;
+            }
+
+            for (var m = startMin; m + wkSlotMinutes <= endMin; m += wkSlotMinutes)
+            {
+                var localStart = DateTime.SpecifyKind(day.AddMinutes(m), DateTimeKind.Unspecified);
+                var localEnd = DateTime.SpecifyKind(day.AddMinutes(m + wkSlotMinutes), DateTimeKind.Unspecified);
+                var startUtc = TimeZoneInfo.ConvertTimeToUtc(localStart, tz);
+                var endUtc = TimeZoneInfo.ConvertTimeToUtc(localEnd, tz);
+                if (startUtc > nowUtc)
+                {
+                    occurrences.Add((startUtc, endUtc));
+                }
+            }
+        }
+
+        if (occurrences.Count == 0)
+        {
+            weeklyError = "No future slots in that range — check the days, window, and horizon.";
+            return;
+        }
+
+        var result = await Availability.CreateManyAsync(userId, occurrences, wkType, nowUtc);
+        if (!result.Ok)
+        {
+            weeklyError = result.Error;
+            return;
+        }
+
+        weeklyMessage = "Weekly availability created (any times clashing with existing slots were skipped).";
         await LoadAsync();
     }
 
