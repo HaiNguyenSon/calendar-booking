@@ -61,6 +61,33 @@ public class AvailabilityServiceTests
     }
 
     [Fact]
+    public async Task CreateOneOff_rejects_times_not_on_the_quarter_hour()
+    {
+        using var db = TestDb.NewContext();
+        var alice = TestDb.AddUser(db, "alice");
+        var svc = new AvailabilityService(db, TestDb.NoSync());
+
+        // 13:07 is not :00/:15/:30/:45.
+        var result = await svc.CreateOneOffAsync(alice.Id, Now.AddMinutes(67), Now.AddMinutes(127), SlotType.Instant, Now);
+
+        Assert.False(result.Ok);
+        Assert.Equal(0, await db.AvailabilitySlots.CountAsync());
+    }
+
+    [Fact]
+    public async Task CreateOneOff_allows_quarter_hour_times()
+    {
+        using var db = TestDb.NewContext();
+        var alice = TestDb.AddUser(db, "alice");
+        var svc = new AvailabilityService(db, TestDb.NoSync());
+
+        // Now is on the hour; +75 min = :15, +105 min = :45.
+        var result = await svc.CreateOneOffAsync(alice.Id, Now.AddMinutes(75), Now.AddMinutes(105), SlotType.Instant, Now);
+
+        Assert.True(result.Ok);
+    }
+
+    [Fact]
     public async Task CreateOneOff_is_blocked_when_the_owner_is_busy_on_their_external_calendar()
     {
         using var db = TestDb.NewContext();

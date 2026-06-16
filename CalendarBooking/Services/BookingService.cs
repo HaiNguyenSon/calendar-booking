@@ -73,6 +73,30 @@ public class BookingService(AppDbContext db, IOptions<BookingOptions> options, N
     }
 
     /// <summary>
+    /// A user's calendar as others may see it: every future slot with time + booked-or-not,
+    /// but NO who/what details. Booked slots show only that the person is busy then; open
+    /// slots are bookable. Treats the calendar as private.
+    /// </summary>
+    public async Task<(ApplicationUser? Owner, IReadOnlyList<CalendarSlot> Slots)> GetScheduleByNicknameAsync(
+        string nickname, DateTime nowUtc, CancellationToken ct = default)
+    {
+        var term = nickname.Trim().ToLower();
+        var owner = await db.Users.FirstOrDefaultAsync(u => u.Nickname.ToLower() == term, ct);
+        if (owner is null)
+        {
+            return (null, Array.Empty<CalendarSlot>());
+        }
+
+        var slots = await db.AvailabilitySlots
+            .Where(s => s.OwnerId == owner.Id && s.EndUtc > nowUtc)
+            .OrderBy(s => s.StartUtc)
+            .Select(s => new CalendarSlot(s.Id, s.StartUtc, s.EndUtc, s.SlotType, s.IsBooked))
+            .ToListAsync(ct);
+
+        return (owner, slots);
+    }
+
+    /// <summary>
     /// Claim an instant slot — creates a confirmed booking and marks the slot booked in a
     /// single atomic SaveChanges. A unique-index violation means someone else won the race.
     /// </summary>
@@ -190,3 +214,9 @@ public class BookingService(AppDbContext db, IOptions<BookingOptions> options, N
 
 /// <summary>An owner shown in browse results, with how many open slots they have.</summary>
 public record OwnerSummary(string Nickname, int OpenSlots);
+
+/// <summary>
+/// A slot on someone's calendar as others see it — time + type + booked-or-not, never who or
+/// what. A booked slot just means "busy then".
+/// </summary>
+public record CalendarSlot(Guid SlotId, DateTime StartUtc, DateTime EndUtc, SlotType SlotType, bool IsBooked);

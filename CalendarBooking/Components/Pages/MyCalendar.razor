@@ -122,12 +122,13 @@ else
                     <EditForm Model="form" OnValidSubmit="AddSlotAsync">
                         <div class="mb-3">
                             <label class="form-label" for="start">Start</label>
-                            <InputDate Type="InputDateType.DateTimeLocal" id="start" class="form-control" @bind-Value="form.Start" />
+                            <InputDate Type="InputDateType.DateTimeLocal" id="start" class="form-control" step="900" @bind-Value="form.Start" />
                         </div>
                         <div class="mb-3">
                             <label class="form-label" for="end">End</label>
-                            <InputDate Type="InputDateType.DateTimeLocal" id="end" class="form-control" @bind-Value="form.End" />
+                            <InputDate Type="InputDateType.DateTimeLocal" id="end" class="form-control" step="900" @bind-Value="form.End" />
                         </div>
+                        <small class="form-text text-muted">Times must be on the quarter hour (:00, :15, :30, :45).</small>
                         <div class="mb-3">
                             <label class="form-label" for="type">When someone books this</label>
                             <InputSelect id="type" class="form-select" @bind-Value="form.SlotType">
@@ -349,26 +350,43 @@ else
             <div class="alert alert-danger" role="alert">@bookingError</div>
         }
 
+        <p class="text-muted small mb-2">
+            <span class="badge" style="background-color: #cfe2ff; color: #084298;">&nbsp;&nbsp;</span> bookable ·
+            <span class="badge bg-secondary">&nbsp;&nbsp;</span> busy (details are private)
+        </p>
+
         @if (PeriodBookingSlots.Count == 0)
         {
-            <p class="text-muted">No open slots in this @PeriodWord.</p>
+            <p class="text-muted">Nothing on their calendar this @PeriodWord.</p>
         }
         else
         {
             <ul class="list-group" style="max-width: 40rem;">
                 @foreach (var slot in PeriodBookingSlots)
                 {
-                    <li class="list-group-item d-flex justify-content-between align-items-center flex-wrap gap-2">
-                        <div>
-                            <div class="fw-semibold">@FormatRange(slot.StartUtc, slot.EndUtc)</div>
-                            <span class="badge @(slot.SlotType == SlotType.Instant ? "bg-success" : "bg-warning text-dark")">
-                                @(slot.SlotType == SlotType.Instant ? "Instant" : "Approval")
-                            </span>
-                        </div>
-                        <button class="btn btn-primary btn-sm" @onclick="() => BookFromCalendarAsync(slot)">
-                            @(slot.SlotType == SlotType.Instant ? "Book" : "Request")
-                        </button>
-                    </li>
+                    @if (slot.IsBooked)
+                    {
+                        @* Busy — time only, no who/what, not bookable. *@
+                        <li class="list-group-item d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <span class="fw-semibold text-muted">@FormatRange(slot.StartUtc, slot.EndUtc)</span>
+                            <span class="badge bg-secondary">Busy</span>
+                        </li>
+                    }
+                    else
+                    {
+                        @* Bookable — light blue. *@
+                        <li class="list-group-item d-flex justify-content-between align-items-center flex-wrap gap-2" style="background-color: #cfe2ff;">
+                            <div>
+                                <div class="fw-semibold">@FormatRange(slot.StartUtc, slot.EndUtc)</div>
+                                <span class="badge @(slot.SlotType == SlotType.Instant ? "bg-success" : "bg-warning text-dark")">
+                                    @(slot.SlotType == SlotType.Instant ? "Instant" : "Approval")
+                                </span>
+                            </div>
+                            <button class="btn btn-primary btn-sm" @onclick="() => BookFromCalendarAsync(slot)">
+                                @(slot.SlotType == SlotType.Instant ? "Book" : "Request")
+                            </button>
+                        </li>
+                    }
                 }
             </ul>
         }
@@ -416,7 +434,7 @@ else
     // Second calendar: the followed user whose open times are shown for booking.
     private string? selectedTargetId;
     private string? selectedNickname;
-    private List<AvailabilitySlot> bookingSlots = new();
+    private List<CalendarSlot> bookingSlots = new();
     private string? bookingMessage;
     private string? bookingError;
 
@@ -458,7 +476,7 @@ else
 
     // Both calendars' slots, scoped to the selected week/month.
     private IReadOnlyList<AvailabilitySlot> PeriodSlots => slots.Where(s => InPeriod(s.StartUtc)).ToList();
-    private IReadOnlyList<AvailabilitySlot> PeriodBookingSlots => bookingSlots.Where(s => InPeriod(s.StartUtc)).ToList();
+    private IReadOnlyList<CalendarSlot> PeriodBookingSlots => bookingSlots.Where(s => InPeriod(s.StartUtc)).ToList();
 
     // Monday-based week start.
     private static DateTime StartOfWeek(DateTime d) => d.Date.AddDays(-(((int)d.DayOfWeek + 6) % 7));
@@ -597,16 +615,16 @@ else
         {
             return;
         }
-        var (_, openSlots) = await Booking.GetOpenSlotsByNicknameAsync(selectedNickname, DateTime.UtcNow);
-        bookingSlots = openSlots.ToList();
+        var (_, schedule) = await Booking.GetScheduleByNicknameAsync(selectedNickname, DateTime.UtcNow);
+        bookingSlots = schedule.ToList();
     }
 
-    private async Task BookFromCalendarAsync(AvailabilitySlot slot)
+    private async Task BookFromCalendarAsync(CalendarSlot slot)
     {
         bookingMessage = bookingError = null;
         var result = slot.SlotType == SlotType.Instant
-            ? await Booking.BookInstantAsync(slot.Id, userId, DateTime.UtcNow)
-            : await Booking.RequestApprovalAsync(slot.Id, userId, DateTime.UtcNow);
+            ? await Booking.BookInstantAsync(slot.SlotId, userId, DateTime.UtcNow)
+            : await Booking.RequestApprovalAsync(slot.SlotId, userId, DateTime.UtcNow);
 
         if (!result.Ok)
         {

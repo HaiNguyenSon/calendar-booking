@@ -22,6 +22,11 @@ public class AvailabilityService(AppDbContext db, CalendarSyncService calendarSy
         public static Result Success(AvailabilitySlot? slot = null) => new(true, null, slot);
     }
 
+    // Bookable times are on the quarter hour. Real UTC offsets are all multiples of 15
+    // minutes, so a quarter-hour local time is still quarter-hour-aligned in UTC.
+    private static bool IsAlignedToQuarterHour(DateTime t) =>
+        t is { Second: 0, Millisecond: 0 } && t.Minute % 15 == 0;
+
     /// <summary>The owner's slots that have not yet ended, soonest first.</summary>
     public async Task<IReadOnlyList<AvailabilitySlot>> GetUpcomingOwnedSlotsAsync(
         string ownerId, DateTime fromUtc, CancellationToken ct = default)
@@ -49,6 +54,11 @@ public class AvailabilityService(AppDbContext db, CalendarSyncService calendarSy
         if (startUtc < nowUtc)
         {
             return Result.Fail("A slot cannot start in the past.");
+        }
+
+        if (!IsAlignedToQuarterHour(startUtc) || !IsAlignedToQuarterHour(endUtc))
+        {
+            return Result.Fail("Times must be on the quarter hour (:00, :15, :30, :45).");
         }
 
         // Don't let an owner offer two overlapping slots. Two ranges overlap when each
@@ -138,6 +148,11 @@ public class AvailabilityService(AppDbContext db, CalendarSyncService calendarSy
             if (o.StartUtc < nowUtc)
             {
                 return Result.Fail("A slot cannot start in the past.");
+            }
+
+            if (!IsAlignedToQuarterHour(o.StartUtc) || !IsAlignedToQuarterHour(o.EndUtc))
+            {
+                return Result.Fail("Times must be on the quarter hour (:00, :15, :30, :45).");
             }
         }
 

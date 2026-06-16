@@ -163,6 +163,24 @@ public class BookingServiceTests
     }
 
     [Fact]
+    public async Task GetScheduleByNickname_returns_both_open_and_busy_slots_without_details()
+    {
+        using var db = TestDb.NewContext();
+        var alice = TestDb.AddUser(db, "alice");
+        TestDb.AddSlot(db, alice.Id, Now.AddHours(1), Now.AddHours(2));                 // open
+        TestDb.AddSlot(db, alice.Id, Now.AddHours(3), Now.AddHours(4), booked: true);   // busy
+        var svc = NewService(db);
+
+        var (owner, slots) = await svc.GetScheduleByNicknameAsync("alice", Now);
+
+        Assert.NotNull(owner);
+        Assert.Equal(2, slots.Count);                       // both shown
+        Assert.Contains(slots, s => s.IsBooked);            // busy is included
+        Assert.Contains(slots, s => !s.IsBooked);           // bookable is included
+        // CalendarSlot carries no attendee/who fields — privacy by shape.
+    }
+
+    [Fact]
     public async Task GetOpenSlotsByNickname_returns_the_owner_and_their_open_slots()
     {
         using var db = TestDb.NewContext();
