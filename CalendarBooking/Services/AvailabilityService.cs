@@ -131,7 +131,7 @@ public class AvailabilityService(AppDbContext db, CalendarSyncService calendarSy
     /// </summary>
     public async Task<Result> CreateManyAsync(
         string ownerId, IReadOnlyList<(DateTime StartUtc, DateTime EndUtc)> occurrences, SlotType slotType,
-        DateTime nowUtc, CancellationToken ct = default)
+        DateTime nowUtc, CancellationToken ct = default, Guid? generatedByRuleId = null)
     {
         if (occurrences.Count == 0)
         {
@@ -188,6 +188,7 @@ public class AvailabilityService(AppDbContext db, CalendarSyncService calendarSy
                 SlotType = slotType,
                 IsBooked = false,
                 CreatedUtc = nowUtc,
+                GeneratedByRuleId = generatedByRuleId,
             });
         }
 

@@ -47,6 +47,8 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
 
             // We frequently list a user's own slots.
             slot.HasIndex(s => s.OwnerId);
+            // Used to clean up a standing rule's slots when it's deleted.
+            slot.HasIndex(s => s.GeneratedByRuleId);
         });
 
         builder.Entity<BookingRequest>(request =>

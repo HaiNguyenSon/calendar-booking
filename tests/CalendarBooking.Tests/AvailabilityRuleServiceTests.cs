@@ -59,18 +59,50 @@ public class AvailabilityRuleServiceTests
     }
 
     [Fact]
-    public async Task DeleteRule_removes_it_but_keeps_materialized_slots()
+    public async Task DeleteRule_removes_it_and_its_future_unbooked_slots()
     {
         using var db = TestDb.NewContext();
         var alice = TestDb.AddUser(db, "alice");
         var svc = NewService(db);
         await svc.AddRuleAsync(alice.Id, WeeklyAvailability.DayBit(DayOfWeek.Tuesday), 9 * 60, 10 * 60, 30, SlotType.Instant, "UTC", Now);
-        var slotCount = await db.AvailabilitySlots.CountAsync();
+        Assert.True(await db.AvailabilitySlots.AnyAsync());
         var rule = await db.WeeklyAvailabilityRules.SingleAsync();
 
-        await svc.DeleteRuleAsync(alice.Id, rule.Id);
+        await svc.DeleteRuleAsync(alice.Id, rule.Id, Now);
 
         Assert.Equal(0, await db.WeeklyAvailabilityRules.CountAsync());
-        Assert.Equal(slotCount, await db.AvailabilitySlots.CountAsync()); // slots remain
+        Assert.Equal(0, await db.AvailabilitySlots.CountAsync()); // unbooked future slots cleared
+    }
+
+    [Fact]
+    public async Task DeleteRule_keeps_a_booked_slot_it_generated()
+    {
+        using var db = TestDb.NewContext();
+        var alice = TestDb.AddUser(db, "alice");
+        var bob = TestDb.AddUser(db, "bob");
+        var svc = NewService(db);
+        await svc.AddRuleAsync(alice.Id, WeeklyAvailability.DayBit(DayOfWeek.Tuesday), 9 * 60, 10 * 60, 30, SlotType.Instant, "UTC", Now);
+        var rule = await db.WeeklyAvailabilityRules.SingleAsync();
+
+        // Mark one generated slot as booked (a confirmed booking references it).
+        var booked = await db.AvailabilitySlots.OrderBy(s => s.StartUtc).FirstAsync();
+        booked.IsBooked = true;
+        db.Bookings.Add(new Booking
+        {
+            Id = Guid.NewGuid(),
+            SlotId = booked.Id,
+            OwnerId = alice.Id,
+            AttendeeId = bob.Id,
+            CreatedById = bob.Id,
+            Status = BookingStatus.Confirmed,
+            CreatedUtc = Now,
+        });
+        await db.SaveChangesAsync();
+
+        await svc.DeleteRuleAsync(alice.Id, rule.Id, Now);
+
+        // The booked slot survives; the rest are gone.
+        Assert.Equal(1, await db.AvailabilitySlots.CountAsync());
+        Assert.NotNull(await db.AvailabilitySlots.FindAsync(booked.Id));
     }
 }

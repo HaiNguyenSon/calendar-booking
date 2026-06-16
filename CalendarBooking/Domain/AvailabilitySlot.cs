@@ -29,4 +29,11 @@ public class AvailabilitySlot
     public bool IsBooked { get; set; }
 
     public DateTime CreatedUtc { get; set; }
+
+    /// <summary>
+    /// If this slot was materialized from a standing <see cref="WeeklyAvailabilityRule"/>, its id
+    /// (a soft tag, not an FK). Lets deleting a rule clean up the future unbooked slots it made.
+    /// Null for one-off / manually created slots.
+    /// </summary>
+    public Guid? GeneratedByRuleId { get; set; }
 }

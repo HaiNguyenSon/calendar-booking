@@ -65,15 +65,28 @@ public class AvailabilityRuleService(AppDbContext db, AvailabilityService availa
     public Task<List<WeeklyAvailabilityRule>> GetRulesAsync(string ownerId, CancellationToken ct = default) =>
         db.WeeklyAvailabilityRules.Where(r => r.OwnerId == ownerId).OrderBy(r => r.CreatedUtc).ToListAsync(ct);
 
-    /// <summary>Delete a rule. Already-materialized future slots are left in place.</summary>
-    public async Task DeleteRuleAsync(string ownerId, Guid ruleId, CancellationToken ct = default)
+    /// <summary>
+    /// Delete a rule and remove the FUTURE, UNBOOKED slots it generated. Booked slots (and any
+    /// slot a booking still references) are kept so existing bookings/history are never yanked.
+    /// </summary>
+    public async Task DeleteRuleAsync(string ownerId, Guid ruleId, DateTime nowUtc, CancellationToken ct = default)
     {
         var rule = await db.WeeklyAvailabilityRules.FirstOrDefaultAsync(r => r.Id == ruleId && r.OwnerId == ownerId, ct);
-        if (rule is not null)
+        if (rule is null)
         {
-            db.WeeklyAvailabilityRules.Remove(rule);
-            await db.SaveChangesAsync(ct);
+            return;
         }
+
+        var deletableSlots = await db.AvailabilitySlots
+            .Where(s => s.GeneratedByRuleId == ruleId
+                        && !s.IsBooked
+                        && s.EndUtc > nowUtc
+                        && !db.Bookings.Any(b => b.SlotId == s.Id))
+            .ToListAsync(ct);
+        db.AvailabilitySlots.RemoveRange(deletableSlots);
+
+        db.WeeklyAvailabilityRules.Remove(rule);
+        await db.SaveChangesAsync(ct);
     }
 
     /// <summary>Materialize a single rule's slots for the rolling horizon (idempotent).</summary>
@@ -96,7 +109,7 @@ public class AvailabilityRuleService(AppDbContext db, AvailabilityService availa
 
         if (occurrences.Count > 0)
         {
-            await availability.CreateManyAsync(rule.OwnerId, occurrences, rule.SlotType, nowUtc, ct);
+            await availability.CreateManyAsync(rule.OwnerId, occurrences, rule.SlotType, nowUtc, ct, rule.Id);
         }
     }
 

@@ -872,8 +872,8 @@ else
     private async Task DeleteRuleAsync(Guid ruleId)
     {
         weeklyMessage = weeklyError = null;
-        await Rules.DeleteRuleAsync(userId, ruleId);
-        weeklyMessage = "Standing rule removed (already-created slots are kept).";
+        await Rules.DeleteRuleAsync(userId, ruleId, DateTime.UtcNow);
+        weeklyMessage = "Standing rule removed — its upcoming unbooked slots were cleared; booked ones are kept.";
         await LoadAsync();
     }
 
