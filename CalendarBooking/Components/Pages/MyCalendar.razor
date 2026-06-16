@@ -7,6 +7,7 @@
 @using Microsoft.AspNetCore.Identity
 @using Microsoft.AspNetCore.WebUtilities
 @inject AvailabilityService Availability
+@inject AvailabilityRuleService Rules
 @inject BookingService Booking
 @inject ApprovalService Approvals
 @inject CancellationService Cancellations
@@ -148,11 +149,14 @@ else
                         <input type="number" min="30" step="15" class="form-control" @bind="wkSlotMinutes" />
                         <small class="form-text text-muted">At least 30, in 15-minute steps; slots end on the quarter hour.</small>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">Weeks ahead</label>
-                        <input type="number" min="1" max="60" class="form-control" @bind="wkWeeks" />
-                        <small class="form-text text-muted">Capped at the end of the year.</small>
-                    </div>
+                    @if (!wkStanding)
+                    {
+                        <div class="mb-3">
+                            <label class="form-label">Weeks ahead</label>
+                            <input type="number" min="1" max="60" class="form-control" @bind="wkWeeks" />
+                            <small class="form-text text-muted">Capped at the end of the year.</small>
+                        </div>
+                    }
                     <div class="mb-3">
                         <label class="form-label">Booking type</label>
                         <select class="form-select" @bind="wkType">
@@ -160,7 +164,28 @@ else
                             <option value="@SlotType.Instant">Confirm instantly</option>
                         </select>
                     </div>
-                    <button class="btn btn-primary w-100" @onclick="GenerateWeeklyAsync">Create weekly availability</button>
+                    <div class="form-check mb-3">
+                        <input type="checkbox" class="form-check-input" id="wkStanding" @bind="wkStanding" />
+                        <label class="form-check-label small" for="wkStanding">Keep updated automatically (standing rule)</label>
+                    </div>
+                    <button class="btn btn-primary w-100" @onclick="GenerateWeeklyAsync">
+                        @(wkStanding ? "Save standing rule" : "Create weekly availability")
+                    </button>
+
+                    @if (rules.Count > 0)
+                    {
+                        <hr />
+                        <p class="small fw-semibold mb-1">Standing rules</p>
+                        <ul class="list-group">
+                            @foreach (var r in rules)
+                            {
+                                <li class="list-group-item d-flex justify-content-between align-items-center gap-2">
+                                    <span class="small">@DescribeRule(r)</span>
+                                    <button class="btn btn-outline-secondary btn-sm" @onclick="() => DeleteRuleAsync(r.Id)">Delete</button>
+                                </li>
+                            }
+                        </ul>
+                    }
                 </div>
             </div>
 
@@ -477,6 +502,8 @@ else
     private int wkSlotMinutes = 30;
     private int wkWeeks = 4;
     private SlotType wkType = SlotType.ApprovalRequired;
+    private bool wkStanding;
+    private List<WeeklyAvailabilityRule> rules = new();
     private string? weeklyMessage;
     private string? weeklyError;
 
@@ -619,6 +646,7 @@ else
         requests = (await Approvals.GetIncomingRequestsAsync(userId, DateTime.UtcNow)).ToList();
         bookings = (await Cancellations.GetUpcomingBookingsForUserAsync(userId, DateTime.UtcNow)).ToList();
         subscriptions = (await Subscriptions.GetSubscriptionsAsync(userId)).ToList();
+        rules = await Rules.GetRulesAsync(userId);
 
         // Map each of my booked slots to who booked it (one confirmed booking per slot).
         attendeeBySlot = bookings
@@ -760,28 +788,26 @@ else
     {
         weeklyMessage = weeklyError = null;
 
-        var selectedDays = new List<DayOfWeek>();
-        if (wkMon) selectedDays.Add(DayOfWeek.Monday);
-        if (wkTue) selectedDays.Add(DayOfWeek.Tuesday);
-        if (wkWed) selectedDays.Add(DayOfWeek.Wednesday);
-        if (wkThu) selectedDays.Add(DayOfWeek.Thursday);
-        if (wkFri) selectedDays.Add(DayOfWeek.Friday);
-        if (wkSat) selectedDays.Add(DayOfWeek.Saturday);
-        if (wkSun) selectedDays.Add(DayOfWeek.Sunday);
+        var daysMask = 0;
+        if (wkMon) daysMask |= WeeklyAvailability.DayBit(DayOfWeek.Monday);
+        if (wkTue) daysMask |= WeeklyAvailability.DayBit(DayOfWeek.Tuesday);
+        if (wkWed) daysMask |= WeeklyAvailability.DayBit(DayOfWeek.Wednesday);
+        if (wkThu) daysMask |= WeeklyAvailability.DayBit(DayOfWeek.Thursday);
+        if (wkFri) daysMask |= WeeklyAvailability.DayBit(DayOfWeek.Friday);
+        if (wkSat) daysMask |= WeeklyAvailability.DayBit(DayOfWeek.Saturday);
+        if (wkSun) daysMask |= WeeklyAvailability.DayBit(DayOfWeek.Sunday);
 
-        if (selectedDays.Count == 0)
+        if (daysMask == 0)
         {
             weeklyError = "Pick at least one day.";
             return;
         }
-        var startTime = wkStart;
-        var endTime = wkEnd;
-        if (endTime <= startTime)
+        if (wkEnd <= wkStart)
         {
             weeklyError = "Enter a valid From/To window.";
             return;
         }
-        if (startTime.Minute % 15 != 0 || endTime.Minute % 15 != 0)
+        if (wkStart.Minute % 15 != 0 || wkEnd.Minute % 15 != 0)
         {
             weeklyError = "From/To must be on the quarter hour.";
             return;
@@ -791,48 +817,41 @@ else
             weeklyError = "Slot length must be at least 30 minutes, in 15-minute steps.";
             return;
         }
+
+        var startMin = (wkStart.Hour * 60) + wkStart.Minute;
+        var endMin = (wkEnd.Hour * 60) + wkEnd.Minute;
+        var nowUtc = DateTime.UtcNow;
+
+        // Standing rule: persist it; the materializer keeps slots filled going forward.
+        if (wkStanding)
+        {
+            var ruleResult = await Rules.AddRuleAsync(userId, daysMask, startMin, endMin, wkSlotMinutes, wkType, tz.Id, nowUtc);
+            if (!ruleResult.Ok)
+            {
+                weeklyError = ruleResult.Error;
+                return;
+            }
+            weeklyMessage = "Standing weekly rule saved — upcoming slots are kept filled automatically.";
+            await LoadAsync();
+            return;
+        }
+
+        // One-off: generate now for the chosen weeks ahead (capped at year-end).
         if (wkWeeks < 1)
         {
             weeklyError = "Weeks ahead must be at least 1.";
             return;
         }
 
-        var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
-        // Horizon cap: end of this year, or end of January next year if it's December.
-        var cap = nowLocal.Month == 12
-            ? new DateTime(nowLocal.Year + 1, 1, 31)
-            : new DateTime(nowLocal.Year, 12, 31);
+        var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, tz);
+        var cap = nowLocal.Month == 12 ? new DateTime(nowLocal.Year + 1, 1, 31) : new DateTime(nowLocal.Year, 12, 31);
         var endDate = nowLocal.Date.AddDays(wkWeeks * 7);
         if (endDate > cap.Date)
         {
             endDate = cap.Date;
         }
 
-        var startMin = (startTime.Hour * 60) + startTime.Minute;
-        var endMin = (endTime.Hour * 60) + endTime.Minute;
-        var nowUtc = DateTime.UtcNow;
-
-        var occurrences = new List<(DateTime StartUtc, DateTime EndUtc)>();
-        for (var day = nowLocal.Date; day <= endDate; day = day.AddDays(1))
-        {
-            if (!selectedDays.Contains(day.DayOfWeek))
-            {
-                continue;
-            }
-
-            for (var m = startMin; m + wkSlotMinutes <= endMin; m += wkSlotMinutes)
-            {
-                var localStart = DateTime.SpecifyKind(day.AddMinutes(m), DateTimeKind.Unspecified);
-                var localEnd = DateTime.SpecifyKind(day.AddMinutes(m + wkSlotMinutes), DateTimeKind.Unspecified);
-                var startUtc = TimeZoneInfo.ConvertTimeToUtc(localStart, tz);
-                var endUtc = TimeZoneInfo.ConvertTimeToUtc(localEnd, tz);
-                if (startUtc > nowUtc)
-                {
-                    occurrences.Add((startUtc, endUtc));
-                }
-            }
-        }
-
+        var occurrences = WeeklyAvailability.Expand(daysMask, startMin, endMin, wkSlotMinutes, tz, nowLocal.Date, endDate, nowUtc);
         if (occurrences.Count == 0)
         {
             weeklyError = "No future slots in that range — check the days, window, and horizon.";
@@ -848,6 +867,29 @@ else
 
         weeklyMessage = "Weekly availability created (any times clashing with existing slots were skipped).";
         await LoadAsync();
+    }
+
+    private async Task DeleteRuleAsync(Guid ruleId)
+    {
+        weeklyMessage = weeklyError = null;
+        await Rules.DeleteRuleAsync(userId, ruleId);
+        weeklyMessage = "Standing rule removed (already-created slots are kept).";
+        await LoadAsync();
+    }
+
+    private static readonly (DayOfWeek Day, string Label)[] DayLabels =
+    {
+        (DayOfWeek.Monday, "Mon"), (DayOfWeek.Tuesday, "Tue"), (DayOfWeek.Wednesday, "Wed"),
+        (DayOfWeek.Thursday, "Thu"), (DayOfWeek.Friday, "Fri"), (DayOfWeek.Saturday, "Sat"), (DayOfWeek.Sunday, "Sun"),
+    };
+
+    private static string DescribeRule(WeeklyAvailabilityRule r)
+    {
+        var days = string.Join(" ", DayLabels.Where(d => (r.DaysMask & WeeklyAvailability.DayBit(d.Day)) != 0).Select(d => d.Label));
+        var from = TimeSpan.FromMinutes(r.StartMinutes);
+        var to = TimeSpan.FromMinutes(r.EndMinutes);
+        var type = r.SlotType == SlotType.Instant ? "instant" : "approval";
+        return $"{days} {from:hh\\:mm}–{to:hh\\:mm} · {r.SlotMinutes}m · {type}";
     }
 
     private async Task AddSlotAsync()
