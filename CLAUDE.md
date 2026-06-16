@@ -69,6 +69,7 @@ Public by default — no global authorization policy. Protect a page with `@attr
 - **Nickname** is the public identity, unique **case-insensitively** via a `LOWER(Nickname)` functional index created with raw SQL in a migration (EF can't model it — so there's intentionally no `HasIndex` for it). **`PublicId`** is a stable opaque 10-char code (`PublicCode`), unique, used for subscribing.
 
 ## Conventions
+- **Ask before building when it's ambiguous, and push back on flawed approaches.** If a request is unclear or has materially different reasonable interpretations, ask for clarification before coding rather than guessing. If the requested approach has a logic conflict, correctness/security risk, or a better alternative, say so plainly and propose the alternative — don't just implement it silently. (E.g. surface things like "this hides cross-period requests", "deleting the rule leaves orphaned slots", "this needs a 15-min-aligned UTC check".)
 - **Mobile-first UI/UX.** Phones/tablets are the primary target — usable on small touch screens first, then scale up. Use Bootstrap's responsive grid; verify at narrow viewports.
 - Commit per logical unit with a body explaining the *why* in plain terms; verify the build is green (and tests, if logic changed) before committing.
 - Match the existing comment density in `.razor`/`.cs` files — they're documented for newcomers.
